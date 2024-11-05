@@ -8,16 +8,6 @@ Upload or paste the URL of your short video and let AI do the magic. Identify so
 - Isolate audio tracks
 - Get accurate transcriptions
 
-## Supported Languages
-- English
-- Spanish
-- French
-- German
-- Italian
-- Portuguese
-- Chinese
-- Japanese
-- Korean
 
 ## Getting Started
 To get started with the project, follow these steps:
@@ -60,7 +50,7 @@ If you would like to contribute to this project, please fork the repository and 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## Contact
-For support or questions, reach out to [your.email@example.com](mailto:your.daoudireda100@gmail.com).
+For support or questions, reach out to [your.daoudireda100@gmail.com](mailto:your.daoudireda100@gmail.com).
 
 ## Acknowledgments
 - Vite
