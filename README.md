@@ -50,7 +50,7 @@ If you would like to contribute to this project, please fork the repository and 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## Contact
-For support or questions, reach out to [your.daoudireda100@gmail.com](mailto:your.daoudireda100@gmail.com).
+For support or questions, reach out to [daoudireda100@gmail.com](mailto:your.daoudireda100@gmail.com).
 
 ## Acknowledgments
 - Vite
