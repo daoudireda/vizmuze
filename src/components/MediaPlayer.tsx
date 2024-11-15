@@ -68,15 +68,17 @@ const MediaPlayer: React.FC<MediaPlayerProps> = ({ src, type }) => {
   return (
     <div className="relative aspect-[9/16] w-full h-full overflow-hidden">
       {/* Video Element */}
-      <video
-        ref={mediaRef as React.RefObject<HTMLVideoElement>}
-        src={src}
-        className="w-full h-full object-cover"
-        onTimeUpdate={handleTimeUpdate}
-        onLoadedMetadata={handleLoadedMetadata}
-        controlsList="nodownload"
-      />
 
+      {isVideo ? (
+        <video
+          ref={mediaRef as React.RefObject<HTMLVideoElement>}
+          src={src}
+          className="w-full h-full object-cover"
+          onTimeUpdate={handleTimeUpdate}
+          onLoadedMetadata={handleLoadedMetadata}
+          controlsList="nodownload"
+        />
+      ) : null}
       {/* Overlay Controls */}
       <div className="absolute inset-0 flex flex-col justify-between p-4">
         {/* Bottom Controls (Play, Volume, Progress) */}

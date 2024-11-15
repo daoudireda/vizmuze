@@ -1,24 +1,27 @@
-import { useState } from "react";
-import { Loader2, Sparkles, Download, Copy, Check } from "lucide-react";
 import { UserButton, useUser } from "@clerk/clerk-react";
+import { Check, Copy, Download, Sparkles } from "lucide-react";
+import { useState } from "react";
+import AudioPlayer from "./components/AudioPlayer";
 import AuthModal from "./components/AuthModal";
 import ExampleSection from "./components/ExampleSection";
+import Footer from "./components/Footer";
 import MediaPlayer from "./components/MediaPlayer";
-import MediaUploader from "./components/MediaUploader";
+import MediaUploader, { Media } from "./components/MediaUploader";
 import Modal from "./components/Modal";
 import MusicInfo from "./components/MusicInfo";
 import PricingSection from "./components/PricingSection";
-import UpgradePrompt from "./components/UpgradePrompt";
-import { transcribeAudio, recognizeSongShazam } from "./utils/api";
-import { convertToAudio, uint8ArrayToUrl } from "./utils/ffmpeg";
 import { Button } from "./components/ui/button";
-import AudioPlayer from "./components/AudioPlayer";
-import Footer from "./components/Footer";
+import UpgradePrompt from "./components/UpgradePrompt";
+import UrlPlayer from "./components/UrlPlayer";
+import { recognizeSongShazam, transcribeAudio } from "./utils/api";
+import { convertToAudio, uint8ArrayToUrl } from "./utils/ffmpeg";
+import { Progress } from "./components/ui/progress";
+import axios from "axios";
 
 function App() {
   const { isSignedIn, user } = useUser();
   const [file, setFile] = useState<File | null>(null);
-  const [mediaUrl, setMediaUrl] = useState<string>("");
+  const [importMedia, setImportMedia] = useState<string>("");
   const [transcription, setTranscription] = useState<string>("");
   const [musicInfo, setMusicInfo] = useState<any>(null);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -26,7 +29,8 @@ function App() {
   const [usedFreeAnalysis, setUsedFreeAnalysis] = useState(false);
   const [audioUrl, setAudioUrl] = useState<string | undefined>(undefined);
   const [copySuccess, setCopySuccess] = useState(false);
-
+  const [media, setMedia] = useState<Media | null>(null);
+  const [progress, setProgress] = useState(0);
   // Modal states
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
@@ -52,27 +56,47 @@ function App() {
 
     try {
       setIsProcessing(true);
+      setProgress(0);
       setError("");
-
+      const interval = setInterval(() => {
+        setProgress((prev) => {
+          if (prev >= 100) {
+            clearInterval(interval);
+            return 100; // Ensure it doesn't exceed 100
+          }
+          return prev + 10; // Increment progress
+        });
+      }, 500);
+      // set file to import
       const url = URL.createObjectURL(file);
-      setMediaUrl(url);
+      setImportMedia(url);
+
       setFile(file);
-
-      const audioData = await convertToAudio(file);
-      const audioUrl = uint8ArrayToUrl(audioData, "audio/wav");
-      setAudioUrl(audioUrl);
-      console.log("Audio url:", audioUrl);
-      const transcriptionText = await transcribeAudio(audioData);
-      setTranscription(transcriptionText);
-
-      const musicData = await recognizeSongShazam(audioData);
-      if (musicData) {
-        setMusicInfo(musicData);
+      // convert to audio
+      const downloadResponse = await axios.post(
+        `http://localhost:3000/api/convert-to-audio`,
+        { url }
+      );
+      if (downloadResponse.status !== 200) {
+        const error = await downloadResponse.data;
+        throw new Error(error.error || "Failed to download audio");
       }
+      const audioUrl = await downloadResponse.data;
+      setAudioUrl(audioUrl.url);
+      console.log("Audio url:", audioUrl);
+      // transcribe audio
+      //const transcriptionText = await transcribeAudio(audioData);
+      //setTranscription(transcriptionText);
+      // recognize song
+      //const musicData = await recognizeSongShazam(audioData);
+      //if (musicData) {
+      //setMusicInfo(musicData);
+      //}
 
       if (!isPro) {
         setUsedFreeAnalysis(true);
       }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (err: any) {
       setError(
         err.message ||
@@ -81,6 +105,7 @@ function App() {
       console.error(err);
     } finally {
       setIsProcessing(false);
+      setProgress(100);
     }
   };
   const handleDownloadAudio = () => {
@@ -104,6 +129,64 @@ function App() {
     }
   };
 
+  const processMedia = async (media: Media) => {
+    try {
+      setIsProcessing(true);
+      setProgress(0);
+      setError("");
+      const interval = setInterval(() => {
+        setProgress((prev) => {
+          if (prev >= 100) {
+            clearInterval(interval);
+            return 100; // Ensure it doesn't exceed 100
+          }
+          return prev + 10; // Increment progress
+        });
+      }, 500);
+
+      // First get video info
+      const infoResponse = await fetch(
+        `http://localhost:3000/api/video-info?url=${encodeURIComponent(
+          media.originalUrl.toString()
+        )}`
+      );
+
+      if (!infoResponse.ok) {
+        const error = await infoResponse.json();
+        throw new Error(error.error || "Failed to fetch video info");
+      }
+
+      const videoInfo = await infoResponse.json();
+      console.log("videoInfo:", videoInfo);
+      setMedia(media);
+      // convert to audio
+      // convert url to file
+      const downloadResponse = await fetch(
+        `http://localhost:3000/api/audio-url?url=${encodeURIComponent(
+          media.originalUrl.toString()
+        )}`,
+        {
+          headers: {
+            Accept: "audio/mpeg",
+          },
+        }
+      );
+      if (!downloadResponse.ok) {
+        const error = await downloadResponse.json();
+        throw new Error(error.error || "Failed to download audio");
+      }
+      const audioUrl = await downloadResponse.json();
+      setAudioUrl(audioUrl.url);
+    } catch (err) {
+      console.error("Error processing media:", err);
+    } finally {
+      setIsProcessing(false);
+      setProgress(100);
+    }
+  };
+
+  // i want to pass the platform and mediaId to the UrlPlayer component from the mediaUploader component
+
   // const handleDownload = useCallback((content: string, filename: string) => {
   //   const blob = new Blob([content], { type: "text/plain" });
   //   const url = URL.createObjectURL(blob);
@@ -125,7 +208,9 @@ function App() {
               <div className="p-2 bg-white rounded-xl shadow-sm">
                 <Sparkles className="h-6 w-6 text-indigo-500" />
               </div>
-              <h1 className="text-xl font-semibold text-gray-900 italic">VizMuz</h1>
+              <h1 className="text-xl font-semibold text-gray-900 italic">
+                vizmuze
+              </h1>
             </div>
             <div className="flex items-center gap-4">
               {isSignedIn ? (
@@ -142,7 +227,7 @@ function App() {
                 <div className="flex gap-4">
                   <Button
                     onClick={() => openAuth("signin")}
-                    className="text-gray-600 hover:text-gray-900 bg-white/50"
+                    className="text-gray-600 hover:text-white bg-white/50 hover:bg-indigo-500"
                   >
                     Sign In
                   </Button>
@@ -174,13 +259,20 @@ function App() {
               Extract Music, Vocals & Transcripts from Any Media
             </p>
             <p className="text-lg text-gray-600">
-              Upload your media files and let AI do the magic. Identify songs,
-              isolate audio, and get accurate transcriptions - all in one place.
+              Upload or paste the URL of your short video and let AI do the
+              magic. Identify songs, isolate audio, and get accurate
+              transcriptions - all in one place.
             </p>
           </div>
         </div>
+        <br />
 
-        {!file && <MediaUploader onFileSelect={processFile} />}
+        {!file && !media && (
+          <MediaUploader
+            onFileSelect={processFile}
+            onMediaSelect={processMedia}
+          />
+        )}
 
         {error && (
           <div className="bg-red-50 border-l-4 border-red-400 p-4 mb-8">
@@ -190,17 +282,17 @@ function App() {
 
         {isProcessing && (
           <div className="text-center py-12">
-            <Loader2 className="animate-spin h-8 w-8 mx-auto text-blue-500" />
+            <Progress value={progress} className="w-full bg-indigo-300 h-2" />
             <p className="mt-2 text-gray-600">Processing your media file...</p>
           </div>
         )}
 
-        {mediaUrl && (
+        {media ? (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            <div className="aspect-[9/16] bg-black rounded-lg overflow-hidden">
-              <MediaPlayer src={mediaUrl} type={file?.type || ""} />
-            </div>
-
+            <UrlPlayer
+              platform={media?.platform || ""}
+              mediaId={media?.mediaId || ""}
+            />
             <div className="space-y-6">
               <div className="bg-white rounded-lg p-6 shadow-lg">
                 <div className="flex justify-between items-center mb-4">
@@ -239,6 +331,51 @@ function App() {
               )}
             </div>
           </div>
+        ) : (
+          importMedia && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              <div className="aspect-[9/16] bg-black rounded-lg overflow-hidden">
+                <MediaPlayer src={importMedia} type={file?.type || ""} />
+              </div>
+              <div className="space-y-6">
+                <div className="bg-white rounded-lg p-6 shadow-lg">
+                  <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-lg font-semibold">Audio Controls</h3>
+                    <button
+                      onClick={handleDownloadAudio}
+                      className="inline-flex items-center px-4 py-2 bg-gray-100 text-indigo-700 rounded-lg hover:bg-gray-200 transition-colors"
+                    >
+                      <Download className="h-5 w-5" />
+                    </button>
+                  </div>
+                  {audioUrl && <AudioPlayer src={audioUrl} />}
+                </div>
+
+                {musicInfo && <MusicInfo songInfo={musicInfo} />}
+
+                {transcription && (
+                  <div className="bg-white rounded-lg p-6 shadow-lg">
+                    <div className="flex justify-between items-center mb-4">
+                      <h3 className="text-lg font-semibold">Transcription</h3>
+                      <button
+                        onClick={handleCopyTranscription}
+                        className="inline-flex items-center px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+                      >
+                        {copySuccess ? (
+                          <Check className="h-4 w-4" />
+                        ) : (
+                          <Copy className="h-4 w-4" />
+                        )}
+                      </button>
+                    </div>
+                    <p className="text-sm text-gray-600 whitespace-pre-wrap">
+                      {transcription}
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )
         )}
 
         <ExampleSection />
