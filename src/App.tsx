@@ -13,8 +13,6 @@ import PricingSection from "./components/PricingSection";
 import { Button } from "./components/ui/button";
 import UpgradePrompt from "./components/UpgradePrompt";
 import UrlPlayer from "./components/UrlPlayer";
-import { recognizeSongShazam, transcribeAudio } from "./utils/api";
-import { convertToAudio, uint8ArrayToUrl } from "./utils/ffmpeg";
 import { Progress } from "./components/ui/progress";
 import axios from "axios";
 
@@ -69,29 +67,57 @@ function App() {
       }, 500);
       // set file to import
       const url = URL.createObjectURL(file);
+      //return the real url from the local machine
       setImportMedia(url);
-
       setFile(file);
       // convert to audio
+      const arrayBuffer = await file.arrayBuffer();
       const downloadResponse = await axios.post(
-        `http://localhost:3000/api/convert-to-audio`,
-        { url }
+        "http://localhost:3000/api/extract-audio",
+        arrayBuffer,
+        {
+          headers: {
+            "Content-Type": "application/octet-stream",
+            "X-File-Name": file.name,
+          },
+          responseType: "blob",
+        }
       );
       if (downloadResponse.status !== 200) {
         const error = await downloadResponse.data;
         throw new Error(error.error || "Failed to download audio");
       }
-      const audioUrl = await downloadResponse.data;
-      setAudioUrl(audioUrl.url);
-      console.log("Audio url:", audioUrl);
+      const audioBlob = new Blob([downloadResponse.data], {
+        type: "audio/mpeg",
+      });
+      const audioUrl = URL.createObjectURL(audioBlob);
+      setAudioUrl(audioUrl);
+
       // transcribe audio
       //const transcriptionText = await transcribeAudio(audioData);
       //setTranscription(transcriptionText);
+
       // recognize song
-      //const musicData = await recognizeSongShazam(audioData);
-      //if (musicData) {
-      //setMusicInfo(musicData);
-      //}
+      const recognizeResponse = await axios.post(
+        "http://localhost:3000/api/recognize-music",
+        audioBlob,
+        {
+          headers: { "Content-Type": "audio/mpeg" },
+          onUploadProgress: (progressEvent) => {
+            const percentCompleted = Math.round(
+              (progressEvent.loaded * 100) / (progressEvent.total ?? 1)
+            );
+            setProgress(50 + percentCompleted / 2); // Second half of progress for recognition
+          },
+        }
+      );
+
+      console.log("recognizeResponse:", recognizeResponse.data);
+      if (recognizeResponse.data) {
+        setMusicInfo(recognizeResponse.data);
+      } else {
+        setError("Failed to recognize music");
+      }
 
       if (!isPro) {
         setUsedFreeAnalysis(true);
@@ -108,6 +134,7 @@ function App() {
       setProgress(100);
     }
   };
+  // download audio
   const handleDownloadAudio = () => {
     if (!file) return;
     const url = URL.createObjectURL(file);
@@ -119,6 +146,8 @@ function App() {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   };
+
+  // copy transcription
   const handleCopyTranscription = async () => {
     try {
       await navigator.clipboard.writeText(transcription);
@@ -156,8 +185,7 @@ function App() {
         throw new Error(error.error || "Failed to fetch video info");
       }
 
-      const videoInfo = await infoResponse.json();
-      console.log("videoInfo:", videoInfo);
+      await infoResponse.json();
       setMedia(media);
       // convert to audio
       // convert url to file
@@ -177,6 +205,26 @@ function App() {
       }
       const audioUrl = await downloadResponse.json();
       setAudioUrl(audioUrl.url);
+      // recognize song
+      const recognizeResponse = await axios.post(
+        "http://localhost:3000/api/recognize-music",
+        audioUrl,
+        {
+          headers: { "Content-Type": "audio/mpeg" },
+          onUploadProgress: (progressEvent) => {
+            const percentCompleted = Math.round(
+              (progressEvent.loaded * 100) / (progressEvent.total ?? 1)
+            );
+            setProgress(50 + percentCompleted / 2); // Second half of progress for recognition
+          },
+        }
+      );
+      if (recognizeResponse.data) {
+        setMusicInfo(recognizeResponse.data);
+      } else {
+        setError("Failed to recognize music");
+      }
+
     } catch (err) {
       console.error("Error processing media:", err);
     } finally {

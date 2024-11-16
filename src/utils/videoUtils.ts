@@ -11,7 +11,6 @@ export const getVideoId = (url: string): string | null => {
   export const getEmbedUrl = (url: string): string => {
     if (isYouTubeUrl(url)) {
       const videoId = getVideoId(url);
-      console.log("Video ID:", videoId);
       return `https://www.youtube.com/embed/${videoId}?autoplay=0&enablejsapi=1`;
     }
     return url;
@@ -52,8 +51,7 @@ export const getVideoId = (url: string): string | null => {
       const hostname = urlObj.hostname;
       const pathname = urlObj.pathname;
 
-      console.log("Hostname:", hostname);
-      console.log("Pathname:", pathname);
+     
       
       // TikTok URL patterns:
       // - https://www.tiktok.com/@username/video/7123456789123456789

@@ -2,7 +2,6 @@ import axios from "axios";
 import FormData from "form-data";
 
 const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY;
-const AUDD_API_KEY = import.meta.env.VITE_AUDD_API_KEY;
 
 export async function transcribeAudio(audioData: Uint8Array): Promise<string> {
   const blob = new Blob([audioData], { type: "audio/wav" });
@@ -28,65 +27,7 @@ export async function transcribeAudio(audioData: Uint8Array): Promise<string> {
   }
 }
 
-interface MusicRecognitionResult {
-  title: string;
-  artist: string;
-  album: string;
-  releaseDate: string;
-  spotify: string;
-  confidence: number;
-}
 
-export async function recognizeMusic(
-  audioData: Uint8Array
-): Promise<MusicRecognitionResult | null> {
-  const blob = new Blob([audioData], { type: "audio/wav" });
-  const formData = new FormData();
-  formData.append("file", blob, "audio.wav");
-  formData.append("api_token", AUDD_API_KEY);
-  formData.append("return", "spotify");
-
-  try {
-    const response = await axios.post("https://api.audd.io/", formData, {
-      headers: formData.getHeaders(),
-    });
-
-    if (response.data.status === "success" && response.data.result) {
-      return {
-        title: response.data.result.title,
-        artist: response.data.result.artist,
-        album: response.data.result.album,
-        releaseDate: response.data.result.release_date,
-        spotify: response.data.result.spotify,
-        confidence: response.data.result.score,
-      };
-    }
-    return null;
-  } catch (error) {
-    console.error("Music recognition error:", error);
-    throw new Error("Failed to recognize music");
-  }
-}
-
-export async function recognizeSongShazam(audioData: Uint8Array) {
-  const options = {
-    method: "POST",
-    url: "https://shazam.p.rapidapi.com/songs/v2/detect",
-    headers: {
-      "content-type": "text/plain",
-      "X-RapidAPI-Key": "6282855754msh9d0323ae1053541p1e49d2jsndd6ad6bcf569",
-      "X-RapidAPI-Host": "shazam.p.rapidapi.com",
-    },
-    data: audioData,
-  };
-
-  try {
-    const response = await axios.request(options);
-    return response.data.track;
-  } catch (error) {
-    console.error("Error recognizing song:", error);
-  }
-}
 
 export class MediaProcessingError extends Error {
   constructor(
