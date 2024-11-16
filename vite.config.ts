@@ -10,7 +10,27 @@ export default defineConfig({
   server: {
     headers: {
       "Cross-Origin-Opener-Policy": "same-origin",
-      "Cross-Origin-Embedder-Policy": "require-corp",
+      // Remove report-to and make it less strict
+      // "Access-Control-Allow-Origin": "*",
+      // "Cross-Origin-Embedder-Policy": "require-corp",
+      "Referrer-Policy": "origin",
+      "Content-Security-Policy":
+        "default-src * 'unsafe-inline' 'unsafe-eval'; script-src * 'unsafe-inline' 'unsafe-eval'; connect-src * 'unsafe-inline'; img-src * data: blob: 'unsafe-inline'; frame-src *; style-src * 'unsafe-inline';",
+    },
+    proxy: {
+      // Proxy TikTok requests to avoid CORS issues
+      "/tiktok": {
+        target: "https://www.tiktok.com",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/tiktok/, ""),
+        secure: false,
+      },
+      "/youtube": {
+        target: "https://www.youtube.com",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/youtube/, ""),
+        secure: false,
+      },
     },
   },
   build: {

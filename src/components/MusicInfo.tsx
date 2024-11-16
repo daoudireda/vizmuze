@@ -1,5 +1,5 @@
-import React from 'react';
-import { Music, Calendar, Album, Star, ExternalLink } from 'lucide-react';
+import React from "react";
+import { Music, Calendar, Album, Star, ExternalLink } from "lucide-react";
 
 interface MusicInfoProps {
   songInfo: {
@@ -7,12 +7,10 @@ interface MusicInfoProps {
     artist: string;
     album?: string;
     releaseDate?: string;
-    spotify?: {
-      external_urls: {
-        spotify: string;
-      };
-    };
+    spotify?: string;
+    coverUrl?: string;
     confidence: number;
+    appleMusic?: string;
   };
 }
 
@@ -25,7 +23,7 @@ const MusicInfo: React.FC<MusicInfoProps> = ({ songInfo }) => {
           <h2 className="text-xl font-semibold text-white">Detected Music</h2>
         </div>
       </div>
-      
+
       <div className="p-6">
         <div className="grid gap-6">
           <div className="space-y-4">
@@ -35,7 +33,9 @@ const MusicInfo: React.FC<MusicInfoProps> = ({ songInfo }) => {
               </div>
               <div>
                 <p className="text-sm text-gray-500">Title</p>
-                <p className="text-lg font-semibold text-gray-900">{songInfo.title}</p>
+                <p className="text-lg font-semibold text-gray-900">
+                  {songInfo.title}
+                </p>
               </div>
             </div>
 
@@ -45,7 +45,9 @@ const MusicInfo: React.FC<MusicInfoProps> = ({ songInfo }) => {
               </div>
               <div>
                 <p className="text-sm text-gray-500">Artist</p>
-                <p className="text-lg font-semibold text-gray-900">{songInfo.artist}</p>
+                <p className="text-lg font-semibold text-gray-900">
+                  {songInfo.artist}
+                </p>
               </div>
             </div>
 
@@ -56,7 +58,9 @@ const MusicInfo: React.FC<MusicInfoProps> = ({ songInfo }) => {
                 </div>
                 <div>
                   <p className="text-sm text-gray-500">Album</p>
-                  <p className="text-lg font-semibold text-gray-900">{songInfo.album}</p>
+                  <p className="text-lg font-semibold text-gray-900">
+                    {songInfo.album}
+                  </p>
                 </div>
               </div>
             )}
@@ -68,7 +72,9 @@ const MusicInfo: React.FC<MusicInfoProps> = ({ songInfo }) => {
                 </div>
                 <div>
                   <p className="text-sm text-gray-500">Release Date</p>
-                  <p className="text-lg font-semibold text-gray-900">{songInfo.releaseDate}</p>
+                  <p className="text-lg font-semibold text-gray-900">
+                    {songInfo.releaseDate}
+                  </p>
                 </div>
               </div>
             )}
@@ -76,23 +82,38 @@ const MusicInfo: React.FC<MusicInfoProps> = ({ songInfo }) => {
 
           <div className="border-t pt-4">
             <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500">Match Confidence</p>
-                <p className="text-lg font-semibold text-gray-900">
-                  {(songInfo.confidence * 100).toFixed(1)}%
-                </p>
+              <div className="space-y-2 flex flex-col">
+                {songInfo.spotify && (
+                  <a
+                    href={songInfo.spotify}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center px-4 py-2 bg-[#1DB954] text-white rounded-lg hover:bg-[#1ed760] transition-colors shadow-lg hover:shadow-xl"
+                  >
+                    <ExternalLink className="h-4 w-4 mr-2" />
+                    Open in Spotify
+                  </a>
+                )}
+                {songInfo.appleMusic && (
+                  <a
+                    href={songInfo.appleMusic}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center px-4 py-2 bg-[#F94C57] text-white rounded-lg hover:bg-[#fc3c44] transition-colors shadow-lg hover:shadow-xl"
+                  >
+                    <ExternalLink className="h-4 w-4 mr-2" />
+                    Open in Apple Music
+                  </a>
+                )}
               </div>
-              
-              {songInfo.spotify && (
-                <a
-                  href={songInfo.spotify.external_urls.spotify}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center px-4 py-2 bg-[#1DB954] text-white rounded-lg hover:bg-[#1ed760] transition-colors shadow-lg hover:shadow-xl"
-                >
-                  <ExternalLink className="h-4 w-4 mr-2" />
-                  Open in Spotify
-                </a>
+
+              {/* cover art */}
+              {songInfo.coverUrl && (
+                <img
+                  src={songInfo.coverUrl}
+                  alt="Album Cover"
+                  className="w-24 h-24 rounded-lg object-cover "
+                />
               )}
             </div>
           </div>
