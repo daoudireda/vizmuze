@@ -92,12 +92,14 @@ const MediaUploader: React.FC<MediaUploaderProps> = ({
       icon: Instagram,
       color: "hover:text-pink-500",
       placeholder: "https://www.instagram.com/p/...",
+      disabled: true,
     },
     {
       name: "Other",
       icon: Globe,
       color: "hover:text-blue-500",
       placeholder: "https://...",
+       disabled: true,
     },
   ];
 
@@ -148,12 +150,15 @@ const MediaUploader: React.FC<MediaUploaderProps> = ({
               {socialPlatforms.map((platform) => (
                 <button
                   key={platform.name}
-                  onClick={() => setSelectedPlatform(platform)}
+                  onClick={() => !platform.disabled && setSelectedPlatform(platform)}
                   className={`flex flex-col items-center gap-2 p-4 rounded-lg transition-colors ${
                     selectedPlatform.name === platform.name
-                      ? "bg-indigo-50"
-                      : "hover:bg-gray-50"
+                    ? "bg-indigo-50 shadow-md"
+                    : platform.disabled
+                    ? "opacity-50 cursor-not-allowed"
+                    : "hover:bg-gray-50 hover:shadow-sm"
                   }`}
+                  disabled={platform.disabled}
                 >
                   <platform.icon className={`h-8 w-8 ${platform.color}`} />
                   <span className="text-sm text-gray-600">{platform.name}</span>

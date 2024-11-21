@@ -1,5 +1,5 @@
 import { UserButton, useUser } from "@clerk/clerk-react";
-import { Check, Copy, Download, Sparkles } from "lucide-react";
+import { Check, Copy, Download, RotateCcw, Sparkles } from "lucide-react";
 import { useState } from "react";
 import AudioPlayer from "./components/AudioPlayer";
 import AuthModal from "./components/AuthModal";
@@ -12,7 +12,6 @@ import MusicInfo from "./components/MusicInfo";
 import PricingSection from "./components/PricingSection";
 import { Button } from "./components/ui/button";
 import UpgradePrompt from "./components/UpgradePrompt";
-import UrlPlayer from "./components/UrlPlayer";
 import { Progress } from "./components/ui/progress";
 import axios from "axios";
 
@@ -20,7 +19,9 @@ function App() {
   const { isSignedIn, user } = useUser();
   const [file, setFile] = useState<File | null>(null);
   const [importMedia, setImportMedia] = useState<string>("");
+
   const [transcription, setTranscription] = useState<string>("");
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [musicInfo, setMusicInfo] = useState<any>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string>("");
@@ -72,7 +73,7 @@ function App() {
       setFile(file);
       // convert to audio
       const arrayBuffer = await file.arrayBuffer();
-      const downloadResponse = await axios.post(
+      const audioResponse = await axios.post(
         "http://localhost:3000/api/extract-audio",
         arrayBuffer,
         {
@@ -83,36 +84,31 @@ function App() {
           responseType: "blob",
         }
       );
-      if (downloadResponse.status !== 200) {
-        const error = await downloadResponse.data;
+      if (audioResponse.status !== 200) {
+        const error = await audioResponse.data;
         throw new Error(error.error || "Failed to download audio");
       }
-      const audioBlob = new Blob([downloadResponse.data], {
-        type: "audio/mpeg",
-      });
-      const audioUrl = URL.createObjectURL(audioBlob);
-      setAudioUrl(audioUrl);
 
       // transcribe audio
       //const transcriptionText = await transcribeAudio(audioData);
-      //setTranscription(transcriptionText);
+      setTranscription("transcriptionText");
+      // Convert the audio response to a blob
+      const audioBlob = new Blob([audioResponse.data], { type: "audio/mpeg" });
+      const audioUrl = URL.createObjectURL(audioBlob);
+      setAudioUrl(audioUrl);
+      // Send the audio blob to the recognition API
+      const formData = new FormData();
+      formData.append("file", audioBlob, "audio.mp3");
 
-      // recognize song
       const recognizeResponse = await axios.post(
         "http://localhost:3000/api/recognize-music",
-        audioBlob,
+        formData,
         {
-          headers: { "Content-Type": "audio/mpeg" },
-          onUploadProgress: (progressEvent) => {
-            const percentCompleted = Math.round(
-              (progressEvent.loaded * 100) / (progressEvent.total ?? 1)
-            );
-            setProgress(50 + percentCompleted / 2); // Second half of progress for recognition
+          headers: {
+            "Content-Type": "multipart/form-data",
           },
         }
       );
-
-      console.log("recognizeResponse:", recognizeResponse.data);
       if (recognizeResponse.data) {
         setMusicInfo(recognizeResponse.data);
       } else {
@@ -135,16 +131,44 @@ function App() {
     }
   };
   // download audio
-  const handleDownloadAudio = () => {
-    if (!file) return;
-    const url = URL.createObjectURL(file);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = file.name.replace(/\.[^/.]+$/, ".mp3");
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+  const handleDownloadAudio = async () => {
+    try {
+      let downloadUrl: string;
+      let filename: string;
+
+      if (media?.originalUrl) {
+        // Handle YouTube/online media
+        const response = await fetch(
+          `http://localhost:3000/api/download-audio?url=${encodeURIComponent(
+            media.originalUrl.toString()
+          )}`
+        );
+
+        if (!response.ok) throw new Error("Download failed");
+        const blob = await response.blob();
+        downloadUrl = URL.createObjectURL(blob);
+        filename = `${media.mediaId || "audio"}.mp3`;
+      } else {
+        if (!file) {
+          setError("No file selected");
+          return;
+        }
+        // Handle local file
+        downloadUrl = URL.createObjectURL(file);
+        filename = file.name.replace(/\.[^/.]+$/, ".mp3");
+      }
+      // Download the file
+      const a = document.createElement("a");
+      a.href = downloadUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(downloadUrl);
+    } catch (error) {
+      console.error("Download error:", error);
+      setError("Failed to download audio. Please try again.");
+    }
   };
 
   // copy transcription
@@ -167,64 +191,59 @@ function App() {
         setProgress((prev) => {
           if (prev >= 100) {
             clearInterval(interval);
-            return 100; // Ensure it doesn't exceed 100
+            return 100;
           }
-          return prev + 10; // Increment progress
+          return prev + 10;
         });
       }, 500);
 
-      // First get video info
-      const infoResponse = await fetch(
-        `http://localhost:3000/api/video-info?url=${encodeURIComponent(
-          media.originalUrl.toString()
-        )}`
-      );
-
-      if (!infoResponse.ok) {
-        const error = await infoResponse.json();
-        throw new Error(error.error || "Failed to fetch video info");
-      }
-
-      await infoResponse.json();
       setMedia(media);
       // convert to audio
-      // convert url to file
-      const downloadResponse = await fetch(
+      const audioUrlResponse = await fetch(
         `http://localhost:3000/api/audio-url?url=${encodeURIComponent(
           media.originalUrl.toString()
-        )}`,
-        {
-          headers: {
-            Accept: "audio/mpeg",
-          },
-        }
+        )}&platform=${media.platform}`
       );
-      if (!downloadResponse.ok) {
-        const error = await downloadResponse.json();
+      if (!audioUrlResponse.ok) {
+        const error = await audioUrlResponse.json();
         throw new Error(error.error || "Failed to download audio");
       }
-      const audioUrl = await downloadResponse.json();
-      setAudioUrl(audioUrl.url);
-      // recognize song
+      const audioUrlData = await audioUrlResponse.json();
+
+      setAudioUrl(audioUrlData.url);
+
+      // Download the audio file using the proxy endpoint
+      const audioResponse = await axios.get(
+        `http://localhost:3000/api/proxy-audio?url=${encodeURIComponent(
+          audioUrlData.url
+        )}&platform=${media.platform}`,
+        {
+          responseType: "arraybuffer",
+        }
+      );
+
+      // Convert the audio response to a blob
+      const audioBlob = new Blob([audioResponse.data], { type: "audio/mpeg" });
+
+      // Send the audio blob to the recognition API
+      const formData = new FormData();
+      formData.append("file", audioBlob, "audio.mp3");
+
       const recognizeResponse = await axios.post(
         "http://localhost:3000/api/recognize-music",
-        audioUrl,
+        formData,
         {
-          headers: { "Content-Type": "audio/mpeg" },
-          onUploadProgress: (progressEvent) => {
-            const percentCompleted = Math.round(
-              (progressEvent.loaded * 100) / (progressEvent.total ?? 1)
-            );
-            setProgress(50 + percentCompleted / 2); // Second half of progress for recognition
+          headers: {
+            "Content-Type": "multipart/form-data",
           },
         }
       );
+
       if (recognizeResponse.data) {
         setMusicInfo(recognizeResponse.data);
       } else {
         setError("Failed to recognize music");
       }
-
     } catch (err) {
       console.error("Error processing media:", err);
     } finally {
@@ -232,20 +251,6 @@ function App() {
       setProgress(100);
     }
   };
-
-  // i want to pass the platform and mediaId to the UrlPlayer component from the mediaUploader component
-
-  // const handleDownload = useCallback((content: string, filename: string) => {
-  //   const blob = new Blob([content], { type: "text/plain" });
-  //   const url = URL.createObjectURL(blob);
-  //   const a = document.createElement("a");
-  //   a.href = url;
-  //   a.download = filename;
-  //   document.body.appendChild(a);
-  //   a.click();
-  //   document.body.removeChild(a);
-  //   URL.revokeObjectURL(url);
-  // }, []);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50">
@@ -299,7 +304,7 @@ function App() {
               <Sparkles className="h-10 w-10 text-indigo-500" />
             </div>
           </div>
-          <h1 className="text-5xl font-bold text-gray-900 mb-6 bg-clip-text text-transparent bg-gradient-to-r from-indigo-500 to-blue-600">
+          <h1 className="text-5xl font-bold text-gray-900 mb-6 bg-clip-text text-transparent bg-gradient-to-r from-indigo-500 to-blue-600 ">
             Your All-in-One Media Analyzer
           </h1>
           <div className="max-w-3xl mx-auto space-y-4">
@@ -335,26 +340,39 @@ function App() {
           </div>
         )}
 
+        {(media || importMedia) && !isProcessing ? (
+          <div className="text-center mt-8 flex-1 mb-8">
+            <Button
+              onClick={() => window.location.reload()}
+              className="inline-flex items-center px-4 py-2 bg-indigo-500 text-white hover:bg-indigo-600 transition-colors rounded-full shadow-lg"
+            >
+              <RotateCcw></RotateCcw>
+              Start Over
+            </Button>
+          </div>
+        ) : null}
+
         {media ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            <UrlPlayer
+          <div className=" w-full">
+            {/* <UrlPlayer
               platform={media?.platform || ""}
               mediaId={media?.mediaId || ""}
-            />
+            /> */}
             <div className="space-y-6">
-              <div className="bg-white rounded-lg p-6 shadow-lg">
-                <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-lg font-semibold">Audio Controls</h3>
-                  <button
-                    onClick={handleDownloadAudio}
-                    className="inline-flex items-center px-4 py-2 bg-gray-100 text-indigo-700 rounded-lg hover:bg-gray-200 transition-colors"
-                  >
-                    <Download className="h-5 w-5" />
-                  </button>
+              {audioUrl && (
+                <div className="bg-white rounded-lg p-6 shadow-lg">
+                  <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-lg font-semibold">Audio Controls</h3>
+                    <button
+                      onClick={handleDownloadAudio}
+                      className="inline-flex items-center px-4 py-2 bg-gray-100 text-indigo-700 rounded-lg hover:bg-gray-200 transition-colors"
+                    >
+                      <Download className="h-5 w-5" />
+                    </button>
+                  </div>
+                  <AudioPlayer src={audioUrl} />
                 </div>
-                {audioUrl && <AudioPlayer src={audioUrl} />}
-              </div>
-
+              )}
               {musicInfo && <MusicInfo songInfo={musicInfo} />}
 
               {transcription && (
@@ -363,12 +381,12 @@ function App() {
                     <h3 className="text-lg font-semibold">Transcription</h3>
                     <button
                       onClick={handleCopyTranscription}
-                      className="inline-flex items-center px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+                      className="inline-flex items-center px-4 py-2 bg-gray-100 text-indigo-700 rounded-lg hover:bg-gray-200 transition-colors"
                     >
                       {copySuccess ? (
-                        <Check className="h-4 w-4" />
+                        <Check className="h-5 w-5" />
                       ) : (
-                        <Copy className="h-4 w-4" />
+                        <Copy className="h-5 w-5" />
                       )}
                     </button>
                   </div>
@@ -385,20 +403,22 @@ function App() {
               <div className="aspect-[9/16] bg-black rounded-lg overflow-hidden">
                 <MediaPlayer src={importMedia} type={file?.type || ""} />
               </div>
-              <div className="space-y-6">
-                <div className="bg-white rounded-lg p-6 shadow-lg">
-                  <div className="flex justify-between items-center mb-4">
-                    <h3 className="text-lg font-semibold">Audio Controls</h3>
-                    <button
-                      onClick={handleDownloadAudio}
-                      className="inline-flex items-center px-4 py-2 bg-gray-100 text-indigo-700 rounded-lg hover:bg-gray-200 transition-colors"
-                    >
-                      <Download className="h-5 w-5" />
-                    </button>
-                  </div>
-                  {audioUrl && <AudioPlayer src={audioUrl} />}
-                </div>
 
+              <div className="space-y-6">
+                {audioUrl && (
+                  <div className="bg-white rounded-lg p-6 shadow-lg">
+                    <div className="flex justify-between items-center mb-4">
+                      <h3 className="text-lg font-semibold">Audio Controls</h3>
+                      <button
+                        onClick={handleDownloadAudio}
+                        className="inline-flex items-center px-4 py-2 bg-gray-100 text-indigo-700 rounded-lg hover:bg-gray-200 transition-colors"
+                      >
+                        <Download className="h-5 w-5" />
+                      </button>
+                    </div>
+                    <AudioPlayer src={audioUrl} />
+                  </div>
+                )}
                 {musicInfo && <MusicInfo songInfo={musicInfo} />}
 
                 {transcription && (
@@ -407,12 +427,12 @@ function App() {
                       <h3 className="text-lg font-semibold">Transcription</h3>
                       <button
                         onClick={handleCopyTranscription}
-                        className="inline-flex items-center px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+                        className="inline-flex items-center px-4 py-2 bg-gray-100 text-indigo-700 rounded-lg hover:bg-gray-200 transition-colors"
                       >
                         {copySuccess ? (
-                          <Check className="h-4 w-4" />
+                          <Check className="h-5 w-5" />
                         ) : (
-                          <Copy className="h-4 w-4" />
+                          <Copy className="h-5 w-5" />
                         )}
                       </button>
                     </div>
