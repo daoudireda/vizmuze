@@ -18,28 +18,6 @@ export default defineConfig({
         "frame-src *; " +
         "style-src * 'unsafe-inline';",
     },
-    proxy: {
-      '/embed.js': {
-        target: 'https://www.tiktok.com',
-        changeOrigin: true,
-        secure: false,
-        rewrite: (path) => path.replace(/^\/embed\.js/, '/embed.js'),
-        headers: {
-          'Referer': 'https://www.tiktok.com',
-          'Origin': 'https://www.tiktok.com'
-        }
-      },
-      '/embed': {
-        target: 'https://www.instagram.com',
-        changeOrigin: true,
-        secure: false,
-        rewrite: (path) => path.replace(/^\/embed/, '/embed.js'),
-        headers: {
-          'Referer': 'https://www.instagram.com',
-          'Origin': 'https://www.instagram.com'
-        }
-      }
-    },
   },
   build: {
     target: "esnext",
