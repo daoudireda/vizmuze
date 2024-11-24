@@ -1,7 +1,7 @@
 import React from "react";
 import { Music, Calendar, Album, Star, ExternalLink } from "lucide-react";
 
-interface MusicInfoProps {
+export interface MusicInfoProps {
   songInfo: {
     title: string;
     artist: string;

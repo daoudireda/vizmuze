@@ -7,13 +7,26 @@ const UrlPlayer = ({
   platform: string;
   mediaId: string;
 }) => {
+  const loadScript = (url: string) => {
+    // Check if script already exists
+    const existingScript = document.querySelector(`script[src="${url}"]`);
+    if (existingScript) return existingScript;
+
+    const script = document.createElement("script");
+    script.src = url;
+    script.async = true;
+    script.crossOrigin = "anonymous";
+    document.body.appendChild(script);
+    return script;
+  };
+
   const renderEmbed = () => {
     switch (platform.toLowerCase()) {
       case "tiktok":
         return (
           <blockquote
             className="tiktok-embed"
-            cite={`https://www.tiktok.com/video/${mediaId}?origin=${window.location.origin}`}
+            cite={`https://www.tiktok.com/video/${mediaId}`}
             data-video-id={mediaId}
             style={{ maxWidth: "325px" }}
           >
@@ -44,10 +57,12 @@ const UrlPlayer = ({
       case "youtube":
         return (
           <iframe
-            src={`https://www.youtube.com/embed/${mediaId}?origin=${window.location.origin}`}
+            src={`https://www.youtube.com/embed/${mediaId}`}
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
             allowFullScreen
             className="w-full h-full object-cover rounded-lg"
+            frameBorder="0"
+            referrerPolicy="strict-origin-when-cross-origin"
           ></iframe>
         );
 
@@ -55,29 +70,36 @@ const UrlPlayer = ({
         return <div>Unsupported platform</div>;
     }
   };
-  // Load platform-specific scripts
-  useEffect(() => {
-    if (platform === "tiktok") {
-      const script = document.createElement("script");
-      script.src = "https://www.tiktok.com/embed.js";
-      script.async = true;
-      return () => {
-        document.body.removeChild(script);
-      };
-    }
 
-    if (platform === "instagram") {
-      const script = document.createElement("script");
-      script.src = "//www.instagram.com/embed.js";
-      script.async = true;
-      document.body.appendChild(script);
-      return () => document.body.removeChild(script);
-    }
+  useEffect(() => {
+    let script: HTMLScriptElement | null = null;
+
+    const loadPlatformScript = async () => {
+      try {
+        switch (platform.toLowerCase()) {
+          case "tiktok":
+            script = loadScript("/embed.js") as HTMLScriptElement;
+            break;
+          case "instagram":
+            script = loadScript("/embed") as HTMLScriptElement;
+            break;
+        }
+      } catch (error) {
+        console.error(`Error loading ${platform} script:`, error);
+      }
+    };
+
+    loadPlatformScript();
+
+    return () => {
+      if (script?.parentNode) {
+        script.parentNode.removeChild(script);
+      }
+    };
   }, [platform]);
 
   return (
     <div className="relative aspect-[9/16] w-full h-full overflow-hidden">
-      {/* Media Display */}
       <div className="w-full h-full object-cover">{renderEmbed()}</div>
     </div>
   );

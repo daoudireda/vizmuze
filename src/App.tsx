@@ -1,27 +1,31 @@
 import { UserButton, useUser } from "@clerk/clerk-react";
-import { Check, Copy, Download, Sparkles } from "lucide-react";
+import { RotateCcw, Sparkles } from "lucide-react";
 import { useState } from "react";
-import AudioPlayer from "./components/AudioPlayer";
 import AuthModal from "./components/AuthModal";
+import Controls from "./components/controls";
 import ExampleSection from "./components/ExampleSection";
+import FAQSection from "./components/FAQSection";
 import Footer from "./components/Footer";
 import MediaPlayer from "./components/MediaPlayer";
 import MediaUploader, { Media } from "./components/MediaUploader";
 import Modal from "./components/Modal";
-import MusicInfo from "./components/MusicInfo";
 import PricingSection from "./components/PricingSection";
 import { Button } from "./components/ui/button";
 import UpgradePrompt from "./components/UpgradePrompt";
-import UrlPlayer from "./components/UrlPlayer";
 import { Progress } from "./components/ui/progress";
-import axios from "axios";
+import {
+  processLocalFile,
+  processMediaUrl,
+  handleDownloadAudio,
+} from "./utils/mediaUtils";
+import { MusicInfoProps } from "./components/MusicInfo";
 
 function App() {
   const { isSignedIn, user } = useUser();
   const [file, setFile] = useState<File | null>(null);
   const [importMedia, setImportMedia] = useState<string>("");
-  const [transcription, setTranscription] = useState<string>("");
-  const [musicInfo, setMusicInfo] = useState<any>(null);
+  const [transcription] = useState<string>("");
+  const [musicInfo, setMusicInfo] = useState<MusicInfoProps | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string>("");
   const [usedFreeAnalysis, setUsedFreeAnalysis] = useState(false);
@@ -29,11 +33,11 @@ function App() {
   const [copySuccess, setCopySuccess] = useState(false);
   const [media, setMedia] = useState<Media | null>(null);
   const [progress, setProgress] = useState(0);
-  // Modal states
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
   const [pricingModalOpen, setPricingModalOpen] = useState(false);
   const [upgradePromptOpen, setUpgradePromptOpen] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
 
   const openAuth = (mode: "signin" | "signup") => {
     setAuthMode(mode);
@@ -56,98 +60,67 @@ function App() {
       setIsProcessing(true);
       setProgress(0);
       setError("");
-      const interval = setInterval(() => {
-        setProgress((prev) => {
-          if (prev >= 100) {
-            clearInterval(interval);
-            return 100; // Ensure it doesn't exceed 100
-          }
-          return prev + 10; // Increment progress
-        });
-      }, 500);
-      // set file to import
+
       const url = URL.createObjectURL(file);
-      //return the real url from the local machine
       setImportMedia(url);
       setFile(file);
-      // convert to audio
-      const arrayBuffer = await file.arrayBuffer();
-      const downloadResponse = await axios.post(
-        "http://localhost:3000/api/extract-audio",
-        arrayBuffer,
-        {
-          headers: {
-            "Content-Type": "application/octet-stream",
-            "X-File-Name": file.name,
-          },
-          responseType: "blob",
-        }
-      );
-      if (downloadResponse.status !== 200) {
-        const error = await downloadResponse.data;
-        throw new Error(error.error || "Failed to download audio");
-      }
-      const audioBlob = new Blob([downloadResponse.data], {
-        type: "audio/mpeg",
+
+      await processLocalFile(file, {
+        setProgress,
+        setError,
+        setAudioUrl,
+        setMusicInfo,
       });
-      const audioUrl = URL.createObjectURL(audioBlob);
-      setAudioUrl(audioUrl);
-
-      // transcribe audio
-      //const transcriptionText = await transcribeAudio(audioData);
-      //setTranscription(transcriptionText);
-
-      // recognize song
-      const recognizeResponse = await axios.post(
-        "http://localhost:3000/api/recognize-music",
-        audioBlob,
-        {
-          headers: { "Content-Type": "audio/mpeg" },
-          onUploadProgress: (progressEvent) => {
-            const percentCompleted = Math.round(
-              (progressEvent.loaded * 100) / (progressEvent.total ?? 1)
-            );
-            setProgress(50 + percentCompleted / 2); // Second half of progress for recognition
-          },
-        }
-      );
-
-      console.log("recognizeResponse:", recognizeResponse.data);
-      if (recognizeResponse.data) {
-        setMusicInfo(recognizeResponse.data);
-      } else {
-        setError("Failed to recognize music");
-      }
 
       if (!isPro) {
         setUsedFreeAnalysis(true);
       }
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } catch (err: any) {
-      setError(
-        err.message ||
-          "An error occurred while processing the file. Please try again."
-      );
-      console.error(err);
+    } catch (err) {
+      console.error("Error processing file:", err);
     } finally {
       setIsProcessing(false);
       setProgress(100);
     }
   };
-  // download audio
-  const handleDownloadAudio = () => {
-    if (!file) return;
-    const url = URL.createObjectURL(file);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = file.name.replace(/\.[^/.]+$/, ".mp3");
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+
+  const processMedia = async (media: Media) => {
+    try {
+      setIsProcessing(true);
+      setProgress(0);
+      setError("");
+      setMedia(media);
+
+      await processMediaUrl(media, {
+        setProgress,
+        setError,
+        setAudioUrl,
+        setMusicInfo,
+      });
+    } catch (err) {
+      console.error("Error processing media:", err);
+    } finally {
+      setIsProcessing(false);
+      setProgress(100);
+    }
   };
 
-  // copy transcription
+  const handleDownloadClick = async () => {
+    if (!file && !media) {
+      setError("No file or media selected");
+      return;
+    }
+    try {
+      setIsDownloading(true);
+      if (media) {
+        await handleDownloadAudio(media, file!, setError);
+      } else if (file) {
+        await handleDownloadAudio(null as unknown as Media, file, setError);
+      }
+    } finally {
+      setIsDownloading(false);
+    }
+  };
+
   const handleCopyTranscription = async () => {
     try {
       await navigator.clipboard.writeText(transcription);
@@ -158,117 +131,45 @@ function App() {
     }
   };
 
-  const processMedia = async (media: Media) => {
-    try {
-      setIsProcessing(true);
-      setProgress(0);
-      setError("");
-      const interval = setInterval(() => {
-        setProgress((prev) => {
-          if (prev >= 100) {
-            clearInterval(interval);
-            return 100; // Ensure it doesn't exceed 100
-          }
-          return prev + 10; // Increment progress
-        });
-      }, 500);
-
-      // First get video info
-      const infoResponse = await fetch(
-        `http://localhost:3000/api/video-info?url=${encodeURIComponent(
-          media.originalUrl.toString()
-        )}`
-      );
-
-      if (!infoResponse.ok) {
-        const error = await infoResponse.json();
-        throw new Error(error.error || "Failed to fetch video info");
-      }
-
-      await infoResponse.json();
-      setMedia(media);
-      // convert to audio
-      // convert url to file
-      const downloadResponse = await fetch(
-        `http://localhost:3000/api/audio-url?url=${encodeURIComponent(
-          media.originalUrl.toString()
-        )}`,
-        {
-          headers: {
-            Accept: "audio/mpeg",
-          },
-        }
-      );
-      if (!downloadResponse.ok) {
-        const error = await downloadResponse.json();
-        throw new Error(error.error || "Failed to download audio");
-      }
-      const audioUrl = await downloadResponse.json();
-      setAudioUrl(audioUrl.url);
-      // recognize song
-      const recognizeResponse = await axios.post(
-        "http://localhost:3000/api/recognize-music",
-        audioUrl,
-        {
-          headers: { "Content-Type": "audio/mpeg" },
-          onUploadProgress: (progressEvent) => {
-            const percentCompleted = Math.round(
-              (progressEvent.loaded * 100) / (progressEvent.total ?? 1)
-            );
-            setProgress(50 + percentCompleted / 2); // Second half of progress for recognition
-          },
-        }
-      );
-      if (recognizeResponse.data) {
-        setMusicInfo(recognizeResponse.data);
-      } else {
-        setError("Failed to recognize music");
-      }
-
-    } catch (err) {
-      console.error("Error processing media:", err);
-    } finally {
-      setIsProcessing(false);
-      setProgress(100);
-    }
-  };
-
-  // i want to pass the platform and mediaId to the UrlPlayer component from the mediaUploader component
-
-  // const handleDownload = useCallback((content: string, filename: string) => {
-  //   const blob = new Blob([content], { type: "text/plain" });
-  //   const url = URL.createObjectURL(blob);
-  //   const a = document.createElement("a");
-  //   a.href = url;
-  //   a.download = filename;
-  //   document.body.appendChild(a);
-  //   a.click();
-  //   document.body.removeChild(a);
-  //   URL.revokeObjectURL(url);
-  // }, []);
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50">
       <header className="border-b bg-white/50 backdrop-blur-sm">
         <div className="max-w-6xl mx-auto px-4 py-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center">
             <div className="flex items-center gap-3">
-              <div className="p-2 bg-white rounded-xl shadow-sm">
-                <Sparkles className="h-6 w-6 text-indigo-500" />
-              </div>
-              <h1 className="text-xl font-semibold text-gray-900 italic">
-                vizmuze
-              </h1>
+              <div className="p-2 bg-white rounded-xl shadow-sm"></div>
+              <h1 className="text-xl font-semibold text-gray-900">Vizmuze</h1>
             </div>
+
+            <div className="flex-1 flex justify-center space-x-4 ">
+              <Button
+                asChild
+                variant="ghost"
+                className="text-gray-600 hover:text-indigo-600 hover:bg-indigo-50"
+              >
+                <a href="#services">Services</a>
+              </Button>
+
+              <Button
+                asChild
+                variant="ghost"
+                className="text-gray-600 hover:text-indigo-600 hover:bg-indigo-50"
+              >
+                <a href="#faq">FAQ</a>
+              </Button>
+
+              <Button
+                onClick={() => setPricingModalOpen(true)}
+                variant="ghost"
+                className="text-gray-600 hover:text-indigo-600 hover:bg-indigo-50"
+              >
+                Pricing
+              </Button>
+            </div>
+
             <div className="flex items-center gap-4">
               {isSignedIn ? (
                 <>
-                  <Button
-                    onClick={() => setPricingModalOpen(true)}
-                    className="bg-indigo-500 text-white px-4 py-2 rounded-lg hover:bg-indigo-600 transition-colors"
-                  >
-                    <span>Pricing</span>
-                  </Button>
                   <UserButton afterSignOutUrl="/" />
                 </>
               ) : (
@@ -299,7 +200,7 @@ function App() {
               <Sparkles className="h-10 w-10 text-indigo-500" />
             </div>
           </div>
-          <h1 className="text-5xl font-bold text-gray-900 mb-6 bg-clip-text text-transparent bg-gradient-to-r from-indigo-500 to-blue-600">
+          <h1 className="text-5xl font-bold text-gray-900 mb-6 bg-clip-text text-transparent bg-gradient-to-r from-indigo-500 to-blue-600 ">
             Your All-in-One Media Analyzer
           </h1>
           <div className="max-w-3xl mx-auto space-y-4">
@@ -331,53 +232,38 @@ function App() {
         {isProcessing && (
           <div className="text-center py-12">
             <Progress value={progress} className="w-full bg-indigo-300 h-2" />
-            <p className="mt-2 text-gray-600">Processing your media file...</p>
+            <p className="mt-2 text-gray-600">
+              {progress < 33 ? "Downloading media..." :
+               progress < 66 ? "Analyzing audio..." :
+               progress < 100 ? "Recognizing music..." :
+               "Processing complete!"}
+            </p>
           </div>
         )}
 
+        {(media || importMedia) && !isProcessing ? (
+          <div className="text-center mt-8 flex-1 mb-8">
+            <Button
+              onClick={() => window.location.reload()}
+              className="inline-flex items-center px-4 py-2 bg-indigo-500 text-white hover:bg-indigo-600 transition-colors rounded-full shadow-lg"
+            >
+              <RotateCcw></RotateCcw>
+              Start Over
+            </Button>
+          </div>
+        ) : null}
+
         {media ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            <UrlPlayer
-              platform={media?.platform || ""}
-              mediaId={media?.mediaId || ""}
+          <div className="w-full">
+            <Controls
+              handleDownloadAudio={handleDownloadClick}
+              audioUrl={audioUrl || ""}
+              musicInfo={musicInfo}
+              transcription={transcription}
+              handleCopyTranscription={handleCopyTranscription}
+              copySuccess={copySuccess}
+              isDownloading={isDownloading}
             />
-            <div className="space-y-6">
-              <div className="bg-white rounded-lg p-6 shadow-lg">
-                <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-lg font-semibold">Audio Controls</h3>
-                  <button
-                    onClick={handleDownloadAudio}
-                    className="inline-flex items-center px-4 py-2 bg-gray-100 text-indigo-700 rounded-lg hover:bg-gray-200 transition-colors"
-                  >
-                    <Download className="h-5 w-5" />
-                  </button>
-                </div>
-                {audioUrl && <AudioPlayer src={audioUrl} />}
-              </div>
-
-              {musicInfo && <MusicInfo songInfo={musicInfo} />}
-
-              {transcription && (
-                <div className="bg-white rounded-lg p-6 shadow-lg">
-                  <div className="flex justify-between items-center mb-4">
-                    <h3 className="text-lg font-semibold">Transcription</h3>
-                    <button
-                      onClick={handleCopyTranscription}
-                      className="inline-flex items-center px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
-                    >
-                      {copySuccess ? (
-                        <Check className="h-4 w-4" />
-                      ) : (
-                        <Copy className="h-4 w-4" />
-                      )}
-                    </button>
-                  </div>
-                  <p className="text-sm text-gray-600 whitespace-pre-wrap">
-                    {transcription}
-                  </p>
-                </div>
-              )}
-            </div>
           </div>
         ) : (
           importMedia && (
@@ -385,49 +271,26 @@ function App() {
               <div className="aspect-[9/16] bg-black rounded-lg overflow-hidden">
                 <MediaPlayer src={importMedia} type={file?.type || ""} />
               </div>
-              <div className="space-y-6">
-                <div className="bg-white rounded-lg p-6 shadow-lg">
-                  <div className="flex justify-between items-center mb-4">
-                    <h3 className="text-lg font-semibold">Audio Controls</h3>
-                    <button
-                      onClick={handleDownloadAudio}
-                      className="inline-flex items-center px-4 py-2 bg-gray-100 text-indigo-700 rounded-lg hover:bg-gray-200 transition-colors"
-                    >
-                      <Download className="h-5 w-5" />
-                    </button>
-                  </div>
-                  {audioUrl && <AudioPlayer src={audioUrl} />}
-                </div>
 
-                {musicInfo && <MusicInfo songInfo={musicInfo} />}
-
-                {transcription && (
-                  <div className="bg-white rounded-lg p-6 shadow-lg">
-                    <div className="flex justify-between items-center mb-4">
-                      <h3 className="text-lg font-semibold">Transcription</h3>
-                      <button
-                        onClick={handleCopyTranscription}
-                        className="inline-flex items-center px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
-                      >
-                        {copySuccess ? (
-                          <Check className="h-4 w-4" />
-                        ) : (
-                          <Copy className="h-4 w-4" />
-                        )}
-                      </button>
-                    </div>
-                    <p className="text-sm text-gray-600 whitespace-pre-wrap">
-                      {transcription}
-                    </p>
-                  </div>
-                )}
-              </div>
+              <Controls
+                handleDownloadAudio={handleDownloadClick}
+                audioUrl={audioUrl || ""}
+                musicInfo={musicInfo}
+                transcription={transcription}
+                handleCopyTranscription={handleCopyTranscription}
+                copySuccess={copySuccess}
+                isDownloading={isDownloading}
+              />
             </div>
           )
         )}
-
+      </div>
+      <div id="services">
         <ExampleSection />
       </div>
+
+      <FAQSection />
+
       <Footer></Footer>
 
       {/* Modals */}
