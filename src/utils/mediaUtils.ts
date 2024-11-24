@@ -72,7 +72,7 @@ export const processMediaUrl = async (
   const progressInterval = updateProgress(setProgress);
 
   try {
-    // Get the audio URL for playback
+    // First get the audio URL for playback
     const audioUrlResponse = await api.get(API_ENDPOINTS.AUDIO_URL, {
       params: {
         url: media.originalUrl.toString(),
@@ -85,20 +85,21 @@ export const processMediaUrl = async (
     }
 
     setAudioUrl(audioUrlResponse.data.audioUrl);
-    // Send the URL directly for recognition
+    setProgress(50);
+
+    // Then recognize the music
     const response = await api.post(API_ENDPOINTS.RECOGNIZE_MUSIC, {
       url: media.originalUrl.toString(),
       platform: media.platform,
     });
-
-    clearInterval(progressInterval);
-    setProgress(100);
 
     if (response.data.error) {
       throw new Error(response.data.error);
     }
 
     setMusicInfo(response.data);
+    clearInterval(progressInterval);
+    setProgress(100);
   } catch (error) {
     clearInterval(progressInterval);
     handleError(error, setError);

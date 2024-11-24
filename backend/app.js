@@ -343,7 +343,6 @@ app.post("/api/recognize-music", upload.single("file"), express.json(), async (r
     } else if (req.body.url) {
       // If a URL was provided, download it first
       const { url, platform } = req.body;
-      
       // Create temporary output file
       const tempOutputFile = path.join(os.tmpdir(), `output_${Date.now()}.mp3`);
 

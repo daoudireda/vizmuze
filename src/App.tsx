@@ -232,7 +232,12 @@ function App() {
         {isProcessing && (
           <div className="text-center py-12">
             <Progress value={progress} className="w-full bg-indigo-300 h-2" />
-            <p className="mt-2 text-gray-600">Processing your media file...</p>
+            <p className="mt-2 text-gray-600">
+              {progress < 33 ? "Downloading media..." :
+               progress < 66 ? "Analyzing audio..." :
+               progress < 100 ? "Recognizing music..." :
+               "Processing complete!"}
+            </p>
           </div>
         )}
 
