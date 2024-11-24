@@ -18,13 +18,14 @@ import {
   processMediaUrl,
   handleDownloadAudio,
 } from "./utils/mediaUtils";
+import { MusicInfoProps } from "./components/MusicInfo";
 
 function App() {
   const { isSignedIn, user } = useUser();
   const [file, setFile] = useState<File | null>(null);
   const [importMedia, setImportMedia] = useState<string>("");
-  const [transcription, setTranscription] = useState<string>("");
-  const [musicInfo, setMusicInfo] = useState<any>(null);
+  const [transcription] = useState<string>("");
+  const [musicInfo, setMusicInfo] = useState<MusicInfoProps | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string>("");
   const [usedFreeAnalysis, setUsedFreeAnalysis] = useState(false);
@@ -136,11 +137,8 @@ function App() {
         <div className="max-w-6xl mx-auto px-4 py-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center">
             <div className="flex items-center gap-3">
-              <div className="p-2 bg-white rounded-xl shadow-sm">
-              </div>
-              <h1 className="text-xl font-semibold text-gray-900">
-                Vizmuze
-              </h1>
+              <div className="p-2 bg-white rounded-xl shadow-sm"></div>
+              <h1 className="text-xl font-semibold text-gray-900">Vizmuze</h1>
             </div>
 
             <div className="flex-1 flex justify-center space-x-4 ">

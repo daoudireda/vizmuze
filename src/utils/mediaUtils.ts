@@ -1,14 +1,20 @@
 import axios from "axios";
 import { Media } from "../components/MediaUploader";
+import { MusicInfoProps } from "../components/MusicInfo";
+import { API_ENDPOINTS, getApiConfig } from "../config/api";
 
 interface ProcessingCallbacks {
-  setProgress: (value: number) => void;
+  setProgress: React.Dispatch<React.SetStateAction<number>>;
   setError: (message: string) => void;
   setAudioUrl: (url: string) => void;
-  setMusicInfo: (info: any) => void;
+  setMusicInfo: (info: MusicInfoProps) => void;
 }
 
-export const updateProgress = (setProgress: (value: number) => void) => {
+const api = axios.create(getApiConfig());
+
+export const updateProgress = (
+  setProgress: React.Dispatch<React.SetStateAction<number>>
+) => {
   return setInterval(() => {
     setProgress((prev: number) => {
       if (prev >= 100) return 100;
@@ -31,42 +37,30 @@ export const processLocalFile = async (
   callbacks: ProcessingCallbacks
 ) => {
   const { setProgress, setError, setAudioUrl, setMusicInfo } = callbacks;
+  const progressInterval = updateProgress(setProgress);
 
   try {
-    const interval = updateProgress(setProgress);
+    const formData = new FormData();
+    formData.append("file", file);
 
-    // Convert file to audio
-    const arrayBuffer = await file.arrayBuffer();
-    const audioResponse = await axios.post(
-      "http://localhost:3000/api/extract-audio",
-      arrayBuffer,
-      {
-        headers: {
-          "Content-Type": "application/octet-stream",
-          "X-File-Name": file.name,
-        },
-        responseType: "blob",
-      }
-    );
+    const response = await api.post(API_ENDPOINTS.RECOGNIZE_MUSIC, formData, {
+      headers: {
+        "Content-Type": "multipart/form-data",
+      },
+    });
 
-    if (audioResponse.status !== 200) {
-      const error = await audioResponse.data;
-      throw new Error(error.error || "Failed to download audio");
+    clearInterval(progressInterval);
+    setProgress(100);
+
+    if (response.data.error) {
+      throw new Error(response.data.error);
     }
 
-    // Process audio response
-    const audioBlob = new Blob([audioResponse.data], { type: "audio/mpeg" });
-    const audioUrl = URL.createObjectURL(audioBlob);
-    setAudioUrl(audioUrl);
-
-    // Recognize music
-    await recognizeMusic(audioBlob, setMusicInfo, setError);
-
-    clearInterval(interval);
-    return audioUrl;
-  } catch (err) {
-    handleError(err, setError);
-    throw err;
+    setMusicInfo(response.data);
+    setAudioUrl(URL.createObjectURL(file).toString());
+  } catch (error) {
+    clearInterval(progressInterval);
+    handleError(error, setError);
   }
 };
 
@@ -75,109 +69,92 @@ export const processMediaUrl = async (
   callbacks: ProcessingCallbacks
 ) => {
   const { setProgress, setError, setAudioUrl, setMusicInfo } = callbacks;
+  const progressInterval = updateProgress(setProgress);
 
   try {
-    const interval = updateProgress(setProgress);
-
-    // Get audio URL
-    const audioUrlResponse = await fetch(
-      `http://localhost:3000/api/audio-url?url=${encodeURIComponent(
-        media.originalUrl.toString()
-      )}&platform=${media.platform}`
-    );
-
-    if (!audioUrlResponse.ok) {
-      const error = await audioUrlResponse.json();
-      throw new Error(error.error || "Failed to download audio");
-    }
-
-    const audioUrlData = await audioUrlResponse.json();
-    setAudioUrl(audioUrlData.url);
-
-    // Download audio through proxy
-    const audioResponse = await axios.get(
-      `http://localhost:3000/api/proxy-audio?url=${encodeURIComponent(
-        audioUrlData.url
-      )}&platform=${media.platform}`,
-      {
-        responseType: "arraybuffer",
-      }
-    );
-
-    const audioBlob = new Blob([audioResponse.data], { type: "audio/mpeg" });
-    await recognizeMusic(audioBlob, setMusicInfo, setError);
-
-    clearInterval(interval);
-    return audioUrlData.url;
-  } catch (err) {
-    handleError(err, setError);
-    throw err;
-  }
-};
-
-const recognizeMusic = async (
-  audioBlob: Blob,
-  setMusicInfo: (info: any) => void,
-  setError: (message: string) => void
-) => {
-  const formData = new FormData();
-  formData.append("file", audioBlob, "audio.mp3");
-
-  const recognizeResponse = await axios.post(
-    "http://localhost:3000/api/recognize-music",
-    formData,
-    {
-      headers: {
-        "Content-Type": "multipart/form-data",
+    // Get the audio URL for playback
+    const audioUrlResponse = await api.get(API_ENDPOINTS.AUDIO_URL, {
+      params: {
+        url: media.originalUrl.toString(),
+        platform: media.platform,
       },
-    }
-  );
+    });
 
-  if (recognizeResponse.data) {
-    setMusicInfo(recognizeResponse.data);
-  } else {
-    setError("Failed to recognize music");
+    if (audioUrlResponse.data.error) {
+      throw new Error(audioUrlResponse.data.error);
+    }
+
+    setAudioUrl(audioUrlResponse.data.audioUrl);
+    // Send the URL directly for recognition
+    const response = await api.post(API_ENDPOINTS.RECOGNIZE_MUSIC, {
+      url: media.originalUrl.toString(),
+      platform: media.platform,
+    });
+
+    clearInterval(progressInterval);
+    setProgress(100);
+
+    if (response.data.error) {
+      throw new Error(response.data.error);
+    }
+
+    setMusicInfo(response.data);
+  } catch (error) {
+    clearInterval(progressInterval);
+    handleError(error, setError);
   }
 };
 
 export const handleDownloadAudio = async (
   media: Media,
-  file: File,
+  file: File | null,
   setError: (message: string) => void
 ) => {
   try {
-    let downloadUrl: string;
-    let filename: string;
-
-    if (media?.originalUrl) {
-      const response = await fetch(
-        `http://localhost:3000/api/download-audio?url=${encodeURIComponent(
-          media.originalUrl.toString()
-        )}`
-      );
-
-      if (!response.ok) throw new Error("Download failed");
-      const blob = await response.blob();
-      downloadUrl = URL.createObjectURL(blob);
-      filename = `${media.mediaId || "audio"}.mp3`;
+    if (file) {
+      // For local files, use the existing file download method
+      const url = URL.createObjectURL(file);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "audio.mp3";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
     } else {
-      if (!file) {
-        setError("No file selected");
-        return;
-      }
-      downloadUrl = URL.createObjectURL(file);
-      filename = file.name.replace(/\.[^/.]+$/, ".mp3");
-    }
+      // For online media, use the download endpoint
+      const response = await api.get(API_ENDPOINTS.DOWNLOAD_AUDIO, {
+        params: {
+          url: media.originalUrl.toString(),
+          platform: media.platform,
+        },
+        responseType: "blob",
+      });
 
-    const a = document.createElement("a");
-    a.href = downloadUrl;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(downloadUrl);
+      // Create a blob URL from the response
+      const blob = new Blob([response.data], { type: "audio/mpeg" });
+      const url = URL.createObjectURL(blob);
+
+      // Get filename from Content-Disposition header or use default
+      const contentDisposition = response.headers["content-disposition"];
+      let filename = "audio.mp3";
+      if (contentDisposition) {
+        const matches = /filename="([^"]*)"/.exec(contentDisposition);
+        if (matches && matches[1]) {
+          filename = matches[1];
+        }
+      }
+
+      // Trigger download
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
   } catch (error) {
-    console.error("Download error:", error);
-    setError("Failed to download audio. Please try again.");
+    handleError(error, setError);
   }
 };
