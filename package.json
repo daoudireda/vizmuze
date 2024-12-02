@@ -7,9 +7,7 @@
     "dev": "concurrently \"npm run backend:dev\" \"npm run frontend\"",
     "frontend": "vite",
     "backend:dev": "cross-env NODE_ENV=development node backend/app.js",
-    "build": "npm run build:client && npm run build:server",
-    "build:client": "vite build --outDir dist/client",
-    "build:server": "vite build --outDir dist/server --ssr src/server/entry-server.tsx",
+    "build": "vite build",
     "start": "cross-env NODE_ENV=production node backend/app.js",
     "preview": "vite preview",
     "lint": "eslint ."

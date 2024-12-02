@@ -22,41 +22,26 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Enable CORS
+app.use(cors());
+app.use(express.json());
+
 // Serve static files in production
 if (process.env.NODE_ENV === "production") {
-  app.use(express.static(path.join(__dirname, "../dist/client")));
+  app.use(express.static(path.join(__dirname, "../dist")));
+}
 
-  // Import SSR entry point dynamically
-  const { render } = await import("../dist/server/entry-server.js");
-
-  // Handle all routes for SSR
-  app.get("*", async (req, res, next) => {
-    // Skip SSR for API routes
+// Handle client-side routing in production
+if (process.env.NODE_ENV === "production") {
+  app.get("*", (req, res, next) => {
+    // Skip for API routes
     if (req.path.startsWith("/api")) {
       return next();
     }
-
-    try {
-      const url = req.originalUrl;
-      const template = fs.readFileSync(
-        path.resolve(__dirname, "../dist/client/index.html"),
-        "utf-8"
-      );
-      const { html: appHtml } = await render(url);
-      const html = template.replace(
-        `<div id="root"></div>`,
-        `<div id="root">${appHtml}</div>`
-      );
-      res.status(200).set({ "Content-Type": "text/html" }).end(html);
-    } catch (e) {
-      console.error(e);
-      next(e);
-    }
+    res.sendFile(path.join(__dirname, "../dist/index.html"));
   });
 }
 
-app.use(cors());
-app.use(express.json());
 app.use((req, res, next) => {
   res.header("Access-Control-Allow-Origin", "*");
   res.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
