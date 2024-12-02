@@ -84,6 +84,15 @@ function App() {
   };
 
   const processMedia = async (media: Media) => {
+    if (!isSignedIn) {
+      openAuth("signin");
+      return;
+    }
+    const isPro = user.publicMetadata.plan === "pro";
+    if (!isPro && usedFreeAnalysis) {
+      setUpgradePromptOpen(true);
+      return;
+    }
     try {
       setIsProcessing(true);
       setProgress(0);
@@ -137,8 +146,11 @@ function App() {
         <div className="max-w-6xl mx-auto px-4 py-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center">
             <div className="flex items-center gap-3">
-              <div className="p-2 bg-white rounded-xl shadow-sm"></div>
-              <h1 className="text-xl font-semibold text-gray-900">Vizmuze</h1>
+              <img
+                src="/LOGO.svg"
+                alt=""
+                className="w-20 items-center justify-center"
+              />
             </div>
 
             <div className="flex-1 flex justify-center space-x-4 ">
@@ -167,13 +179,13 @@ function App() {
               </Button>
             </div>
 
-            <div className="flex items-center gap-4">
+            <div className="flex items-center">
               {isSignedIn ? (
                 <>
-                  <UserButton afterSignOutUrl="/" />
+                  <UserButton/>
                 </>
               ) : (
-                <div className="flex gap-4">
+                <div className="flex gap-2">
                   <Button
                     onClick={() => openAuth("signin")}
                     className="text-gray-600 hover:text-white bg-white/50 hover:bg-indigo-500"
@@ -233,10 +245,13 @@ function App() {
           <div className="text-center py-12">
             <Progress value={progress} className="w-full bg-indigo-300 h-2" />
             <p className="mt-2 text-gray-600">
-              {progress < 33 ? "Downloading media..." :
-               progress < 66 ? "Analyzing audio..." :
-               progress < 100 ? "Recognizing music..." :
-               "Processing complete!"}
+              {progress < 33
+                ? "Downloading media..."
+                : progress < 66
+                ? "Analyzing audio..."
+                : progress < 100
+                ? "Recognizing music..."
+                : "Processing complete!"}
             </p>
           </div>
         )}

@@ -1,5 +1,6 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import { resolve } from 'path';
 
 export default defineConfig({
   plugins: [react()],
@@ -22,10 +23,20 @@ export default defineConfig({
   build: {
     target: "esnext",
     sourcemap: true,
+    rollupOptions: {
+      input: {
+        main: resolve(__dirname, 'index.html'),
+        client: resolve(__dirname, 'src/client/entry-client.tsx'),
+        server: resolve(__dirname, 'src/server/entry-server.tsx')
+      }
+    }
   },
   resolve: {
     alias: {
       "@": "/src",
     },
   },
+  ssr: {
+    noExternal: ['react-dropzone', '@clerk/clerk-react', 'framer-motion']
+  }
 });

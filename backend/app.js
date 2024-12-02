@@ -12,13 +12,48 @@ import axios from "axios";
 import FormData from "form-data";
 import multer from "multer";
 import ytdl from "ytdl-core";
+import Stripe from "stripe";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const AUDD_API_KEY = process.env.AUDD_API_KEY;
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Serve static files in production
+if (process.env.NODE_ENV === "production") {
+  app.use(express.static(path.join(__dirname, "../dist/client")));
+
+  // Import SSR entry point dynamically
+  const { render } = await import("../dist/server/entry-server.js");
+
+  // Handle all routes for SSR
+  app.get("*", async (req, res, next) => {
+    // Skip SSR for API routes
+    if (req.path.startsWith("/api")) {
+      return next();
+    }
+
+    try {
+      const url = req.originalUrl;
+      const template = fs.readFileSync(
+        path.resolve(__dirname, "../dist/client/index.html"),
+        "utf-8"
+      );
+      const { html: appHtml } = await render(url);
+      const html = template.replace(
+        `<div id="root"></div>`,
+        `<div id="root">${appHtml}</div>`
+      );
+      res.status(200).set({ "Content-Type": "text/html" }).end(html);
+    } catch (e) {
+      console.error(e);
+      next(e);
+    }
+  });
+}
 
 app.use(cors());
 app.use(express.json());
@@ -32,11 +67,11 @@ app.use((req, res, next) => {
   next();
 });
 
-app.get('/api/download-audio', async (req, res) => {
+app.get("/api/download-audio", async (req, res) => {
   try {
     const { url, platform } = req.query;
     if (!url) {
-      return res.status(400).send('URL is required');
+      return res.status(400).send("URL is required");
     }
 
     // Create temporary output file
@@ -45,19 +80,24 @@ app.get('/api/download-audio', async (req, res) => {
     // Get video info for the title
     const infoOptions = ["--dump-json", "--no-playlist"];
     const info = JSON.parse(await executeYtDlp(url, infoOptions));
-    const safeTitle = info.title.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+    const safeTitle = info.title.replace(/[^a-z0-9]/gi, "_").toLowerCase();
 
     // Download audio using yt-dlp
     const options = [
-      '-f', getAudioFormatByPlatform(platform),
-      '-o', tempOutputFile,
-      '--no-playlist',
-      '--extract-audio',
-      '--audio-format', 'mp3',
-      '--audio-quality', '0',
-      '--no-check-certificates',
-      '--no-cookies',
-      '--extractor-args', 'youtube:player_client=android',
+      "-f",
+      getAudioFormatByPlatform(platform),
+      "-o",
+      tempOutputFile,
+      "--no-playlist",
+      "--extract-audio",
+      "--audio-format",
+      "mp3",
+      "--audio-quality",
+      "0",
+      "--no-check-certificates",
+      "--no-cookies",
+      "--extractor-args",
+      "youtube:player_client=android",
     ];
 
     try {
@@ -85,27 +125,30 @@ app.get('/api/download-audio', async (req, res) => {
       });
 
       // Set response headers for download
-      res.setHeader('Content-Type', 'audio/mpeg');
-      res.setHeader('Content-Disposition', `attachment; filename="${safeTitle}.mp3"`);
-      res.setHeader('X-Music-Info', JSON.stringify(recognizeResponse.data));
+      res.setHeader("Content-Type", "audio/mpeg");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="${safeTitle}.mp3"`
+      );
+      res.setHeader("X-Music-Info", JSON.stringify(recognizeResponse.data));
 
       // Stream the file to the client
       const fileStream = fs.createReadStream(tempOutputFile);
       fileStream.pipe(res);
 
       // Clean up the file after streaming
-      fileStream.on('end', () => {
+      fileStream.on("end", () => {
         fs.unlink(tempOutputFile, (err) => {
-          if (err) console.error('Error deleting temp file:', err);
+          if (err) console.error("Error deleting temp file:", err);
         });
       });
     } catch (error) {
-      console.error('yt-dlp error:', error);
+      console.error("yt-dlp error:", error);
       throw error;
     }
   } catch (error) {
-    console.error('Error downloading audio:', error);
-    res.status(500).send('Failed to download audio');
+    console.error("Error downloading audio:", error);
+    res.status(500).send("Failed to download audio");
   }
 });
 
@@ -196,7 +239,7 @@ app.get("/api/audio-url", async (req, res) => {
   try {
     const { url, originalUrl, platform } = req.query;
     const mediaUrl = originalUrl || url;
-    
+
     if (!mediaUrl) {
       return res.status(400).json({ error: "URL is required" });
     }
@@ -228,7 +271,7 @@ app.get("/api/audio-url", async (req, res) => {
       "--add-header",
       "sec-fetch-site:none",
       "--add-header",
-      "sec-fetch-user:?1"
+      "sec-fetch-user:?1",
     ];
 
     try {
@@ -333,99 +376,112 @@ const upload = multer({
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
 });
 
-app.post("/api/recognize-music", upload.single("file"), express.json(), async (req, res) => {
-  try {
-    let audioBuffer;
-    
-    if (req.file) {
-      // If a file was uploaded, use its buffer directly
-      audioBuffer = req.file.buffer;
-    } else if (req.body.url) {
-      // If a URL was provided, download it first
-      const { url, platform } = req.body;
-      // Create temporary output file
-      const tempOutputFile = path.join(os.tmpdir(), `output_${Date.now()}.mp3`);
+app.post(
+  "/api/recognize-music",
+  upload.single("file"),
+  express.json(),
+  async (req, res) => {
+    try {
+      let audioBuffer;
 
-      // Download audio using yt-dlp
-      const options = [
-        '-f', getAudioFormatByPlatform(platform),
-        '-o', tempOutputFile,
-        '--no-playlist',
-        '--extract-audio',
-        '--audio-format', 'mp3',
-        '--audio-quality', '0',
-        '--no-check-certificates',
-        '--no-cookies',
-        '--extractor-args', 'youtube:player_client=android',
-      ];
+      if (req.file) {
+        // If a file was uploaded, use its buffer directly
+        audioBuffer = req.file.buffer;
+      } else if (req.body.url) {
+        // If a URL was provided, download it first
+        const { url, platform } = req.body;
+        // Create temporary output file
+        const tempOutputFile = path.join(
+          os.tmpdir(),
+          `output_${Date.now()}.mp3`
+        );
 
-      try {
-        await executeYtDlp(url, options);
-        audioBuffer = await fs.promises.readFile(tempOutputFile);
-        
-        // Clean up temp file
-        await fs.promises.unlink(tempOutputFile);
-      } catch (error) {
-        console.error('yt-dlp error:', error);
-        throw error;
+        // Download audio using yt-dlp
+        const options = [
+          "-f",
+          getAudioFormatByPlatform(platform),
+          "-o",
+          tempOutputFile,
+          "--no-playlist",
+          "--extract-audio",
+          "--audio-format",
+          "mp3",
+          "--audio-quality",
+          "0",
+          "--no-check-certificates",
+          "--no-cookies",
+          "--extractor-args",
+          "youtube:player_client=android",
+        ];
+
+        try {
+          await executeYtDlp(url, options);
+          audioBuffer = await fs.promises.readFile(tempOutputFile);
+
+          // Clean up temp file
+          await fs.promises.unlink(tempOutputFile);
+        } catch (error) {
+          console.error("yt-dlp error:", error);
+          throw error;
+        }
+      } else if (req.headers["x-music-info"]) {
+        // If music info is available, use it directly
+        const musicInfo = JSON.parse(req.headers["x-music-info"]);
+        res.json(musicInfo);
+        return;
+      } else {
+        return res.status(400).json({ error: "No audio file or URL provided" });
       }
-    } else if (req.headers['x-music-info']) {
-      // If music info is available, use it directly
-      const musicInfo = JSON.parse(req.headers['x-music-info']);
-      res.json(musicInfo);
-      return;
-    } else {
-      return res.status(400).json({ error: "No audio file or URL provided" });
-    }
 
-    // Create form data for AudD API
-    const form = new FormData();
-    form.append("file", audioBuffer, {
-      filename: "audio.mp3",
-      contentType: "audio/mpeg",
-    });
-    form.append("return", "apple_music,spotify");
-
-    // Send request to AudD API
-    const response = await axios.post("https://api.audd.io/", form, {
-      headers: {
-        ...form.getHeaders(),
-      },
-      params: {
-        api_token: AUDD_API_KEY,
-      },
-    });
-
-    if (response.data && response.data.result) {
-      const { title, artist, album, release_date } = response.data.result;
-      const coverUrl =
-        response.data.result.spotify?.album?.images[0]?.url ||
-        response.data.result.apple_music?.artwork?.url.replace(
-          "{w}x{h}",
-          "300x300"
-        ) ||
-        "/placeholder.svg?height=300&width=300";
-
-      res.json({
-        title,
-        artist,
-        album,
-        releaseDate: release_date,
-        coverUrl,
-        spotify: response.data.result.spotify?.external_urls?.spotify,
-        appleMusic: response.data.result.apple_music?.url,
+      // Create form data for AudD API
+      const form = new FormData();
+      form.append("file", audioBuffer, {
+        filename: "audio.mp3",
+        contentType: "audio/mpeg",
       });
-    } else {
-      res.json({ error: "No music found" });
+      form.append("return", "apple_music,spotify");
+
+      // Send request to AudD API
+      const response = await axios.post("https://api.audd.io/", form, {
+        headers: {
+          ...form.getHeaders(),
+        },
+        params: {
+          api_token: AUDD_API_KEY,
+        },
+      });
+
+      if (response.data && response.data.result) {
+        const { title, artist, album, release_date } = response.data.result;
+        const coverUrl =
+          response.data.result.spotify?.album?.images[0]?.url ||
+          response.data.result.apple_music?.artwork?.url.replace(
+            "{w}x{h}",
+            "300x300"
+          ) ||
+          "/placeholder.svg?height=300&width=300";
+
+        res.json({
+          title,
+          artist,
+          album,
+          releaseDate: release_date,
+          coverUrl,
+          spotify: response.data.result.spotify?.external_urls?.spotify,
+          appleMusic: response.data.result.apple_music?.url,
+        });
+      } else {
+        res.json({ error: "No music found" });
+      }
+    } catch (error) {
+      console.error("Error recognizing music:", error);
+      res.status(500).json({
+        error: "Failed to recognize music",
+        details: error.message,
+      });
     }
-  } catch (error) {
-    console.error("Error recognizing music:", error);
-    res.status(500).json({
-      error: "Failed to recognize music",
-      details: error.message,
-    });
   }
-});
+);
 
 app.get("/api/proxy-audio", async (req, res) => {
   try {
