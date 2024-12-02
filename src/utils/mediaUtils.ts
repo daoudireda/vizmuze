@@ -10,7 +10,12 @@ interface ProcessingCallbacks {
   setMusicInfo: (info: MusicInfoProps) => void;
 }
 
-const api = axios.create(getApiConfig());
+const api = axios.create({
+  ...getApiConfig(),
+  maxContentLength: Infinity,
+  maxBodyLength: Infinity,
+  timeout: 300000, // 5 minutes timeout
+});
 
 export const updateProgress = (
   setProgress: React.Dispatch<React.SetStateAction<number>>
@@ -40,15 +45,17 @@ export const processLocalFile = async (
   const progressInterval = updateProgress(setProgress);
 
   try {
-
-    //setAudioUrl(URL.createObjectURL(file).toString());
     const fileBuffer = await file.arrayBuffer();
     const extractResponse = await api.post(API_ENDPOINTS.EXTRACT_AUDIO, fileBuffer, {
       headers: {
         'Content-Type': 'application/octet-stream',
         'X-File-Name': file.name
       },
-      responseType: 'blob'
+      responseType: 'blob',
+      onUploadProgress: (progressEvent) => {
+        const percentCompleted = Math.round((progressEvent.loaded * 100) / (progressEvent.total || file.size));
+        setProgress(percentCompleted);
+      }
     });
 
     if (extractResponse.status !== 200) {
@@ -66,6 +73,10 @@ export const processLocalFile = async (
       headers: {
         "Content-Type": "multipart/form-data",
       },
+      onUploadProgress: (progressEvent) => {
+        const percentCompleted = Math.round((progressEvent.loaded * 100) / (progressEvent.total || file.size));
+        setProgress(percentCompleted);
+      }
     });
 
     clearInterval(progressInterval);
