@@ -49,8 +49,8 @@ export async function createStripeCheckout(price: number) {
           quantity: 1,
         },
       ],
-      success_url: `${window.location.origin}/dashboard?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${window.location.origin}/pricing`,
+      success_url: `${window.location.origin}/?session_id={CHECKOUT_SESSION_ID}&payment=success`,
+      cancel_url: `${window.location.origin}/?payment=canceled`,
     });
 
     return session;
