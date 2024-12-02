@@ -7,7 +7,6 @@ export const API_ENDPOINTS = {
   VIDEO_INFO: `${API_BASE_URL}/api/video-info`,
   DOWNLOAD_AUDIO: `${API_BASE_URL}/api/download-audio`,
   EXTRACT_AUDIO: `${API_BASE_URL}/api/extract-audio`,
-
 } as const;
 
 export const getApiConfig = () => ({

@@ -2,6 +2,7 @@ import { spawn } from "child_process";
 import cors from "cors";
 import express from "express";
 import ffmpeg from "fluent-ffmpeg";
+import ffmpegInstaller from '@ffmpeg-installer/ffmpeg';
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -13,6 +14,9 @@ import FormData from "form-data";
 import multer from "multer";
 import ytdl from "ytdl-core";
 import Stripe from "stripe";
+
+// Set FFmpeg path
+ffmpeg.setFfmpegPath(ffmpegInstaller.path);
 
 const app = express();
 const PORT = process.env.PORT || 3000;
