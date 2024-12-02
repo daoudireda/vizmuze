@@ -119,30 +119,37 @@ export class YouTubeClient {
   async getVideoDetails(videoId: string): Promise<YouTubeVideoDetails | null> {
     try {
       const response = await fetch(
-        `${this.baseUrl}/videos?part=snippet&id=${videoId}&key=${this.apiKey}`
+        `${this.baseUrl}/videos?part=snippet&id=${videoId}&key=${this.apiKey}`,
+        {
+          headers: {
+            'Origin': window.location.origin,
+            'Referer': window.location.origin
+          }
+        }
       );
 
       if (!response.ok) {
-        throw new Error(`YouTube API error: ${response.statusText}`);
+        const error = await response.json();
+        console.error('YouTube API error:', error);
+        throw new Error(`YouTube API error: ${error.error?.message || 'Unknown error'}`);
       }
 
       const data = await response.json();
-      const video = data.items[0];
-
-      if (!video) {
+      if (!data.items || data.items.length === 0) {
         return null;
       }
 
+      const item = data.items[0];
       return {
-        id: videoId,
-        title: video.snippet.title,
-        description: video.snippet.description,
-        thumbnails: video.snippet.thumbnails,
-        channelTitle: video.snippet.channelTitle,
-        publishedAt: video.snippet.publishedAt,
+        id: item.id,
+        title: item.snippet.title,
+        description: item.snippet.description,
+        thumbnails: item.snippet.thumbnails,
+        channelTitle: item.snippet.channelTitle,
+        publishedAt: item.snippet.publishedAt,
       };
     } catch (error) {
-      console.error("Error fetching video details:", error);
+      console.error('Error fetching video details:', error);
       throw error;
     }
   }

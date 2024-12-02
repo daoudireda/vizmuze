@@ -2,7 +2,6 @@ import React from 'react';
 import { SignIn, SignUp } from '@clerk/clerk-react';
 import Modal from './Modal';
 
-
 interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -17,9 +16,9 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, mode }) => {
           {mode === 'signin' ? 'Welcome Back' : 'Create Your Account'}
         </h2>
         {mode === 'signin' ? (
-          <SignIn routing="hash" redirectUrl="/" signUpUrl="#" />
+          <SignIn  routing="hash" signUpUrl="#" signUpFallbackRedirectUrl="/" />
         ) : (
-          <SignUp routing="hash" redirectUrl="/" signInUrl="#" />
+          <SignUp routing="hash" signInUrl="#" signInFallbackRedirectUrl="/" />
         )}
       </div>
     </Modal>
