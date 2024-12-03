@@ -3,24 +3,37 @@
   "builds": [
     {
       "src": "backend/app.js",
-      "use": "@vercel/node"
+      "use": "@vercel/node",
+      "config": {
+        "maxLambdaSize": "100mb"
+      }
     },
     {
-      "src": "package.json",
-      "use": "@vercel/static-build",
-      "config": {
-        "distDir": "dist"
+      "src": "dist/**",
+      "use": "@vercel/static"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "backend/app.js",
+      "headers": {
+        "Access-Control-Allow-Credentials": "true",
+        "Access-Control-Allow-Origin": "${process.env.FRONTEND_URL}",
+        "Access-Control-Allow-Methods": "GET,OPTIONS,PATCH,DELETE,POST,PUT",
+        "Access-Control-Allow-Headers": "X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, X-File-Name, X-Music-Info"
+      }
+    },
+    {
+      "src": "/(.*)",
+      "dest": "dist/$1",
+      "headers": {
+        "Cache-Control": "public, max-age=31536000, immutable"
       }
     }
   ],
-  "rewrites": [
-    {
-      "source": "/api/(.*)",
-      "destination": "/backend/app.js"
-    },
-    {
-      "source": "/(.*)",
-      "destination": "/"
-    }
-  ]
+  "env": {
+    "NODE_ENV": "production",
+    "PORT": "3000"
+  }
 }
