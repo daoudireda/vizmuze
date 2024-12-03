@@ -3,35 +3,24 @@
   "builds": [
     {
       "src": "backend/app.js",
-      "use": "@vercel/node",
-      "config": {
-        "maxLambdaSize": "100mb"
-      }
+      "use": "@vercel/node"
     },
     {
-      "src": "dist/**",
-      "use": "@vercel/static"
+      "src": "package.json",
+      "use": "@vercel/static-build",
+      "config": {
+        "distDir": "dist"
+      }
     }
   ],
-  "routes": [
+  "rewrites": [
     {
-      "src": "/api/(.*)",
-      "headers": {
-        "Access-Control-Allow-Origin": "https://vizmuze-kkqh0gpgl-daoudiredas-projects.vercel.app",
-        "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-        "Access-Control-Allow-Headers": "X-Requested-With, Content-Type, Accept, X-File-Name",
-        "Access-Control-Allow-Credentials": "true",
-        "Access-Control-Max-Age": "86400"
-      },
-      "continue": true
+      "source": "/api/(.*)",
+      "destination": "/backend/app.js"
     },
     {
-      "src": "/api/(.*)",
-      "dest": "backend/app.js"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/dist/$1"
+      "source": "/(.*)",
+      "destination": "/"
     }
   ]
 }

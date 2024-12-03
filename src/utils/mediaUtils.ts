@@ -1,7 +1,7 @@
+import axios from "axios";
 import { Media } from "../components/MediaUploader";
 import { MusicInfoProps } from "../components/MusicInfo";
-import { API_ENDPOINTS } from "../config/api";
-import apiClient from "../config/api";
+import { API_ENDPOINTS, getApiConfig } from "../config/api";
 
 interface ProcessingCallbacks {
   setProgress: React.Dispatch<React.SetStateAction<number>>;
@@ -9,6 +9,13 @@ interface ProcessingCallbacks {
   setAudioUrl: (url: string) => void;
   setMusicInfo: (info: MusicInfoProps) => void;
 }
+
+const api = axios.create({
+  ...getApiConfig(),
+  maxContentLength: Infinity,
+  maxBodyLength: Infinity,
+  timeout: 300000, // 5 minutes timeout
+});
 
 export const updateProgress = (
   setProgress: React.Dispatch<React.SetStateAction<number>>
@@ -38,67 +45,49 @@ export const processLocalFile = async (
   const progressInterval = updateProgress(setProgress);
 
   try {
-    if (file.size > 100 * 1024 * 1024) {
-      throw new Error('File size too large. Maximum size is 100MB.');
-    }
-
-    // Create FormData for audio extraction
-    const extractFormData = new FormData();
-    extractFormData.append('file', file);
-
-    const extractResponse = await apiClient.post(
-      API_ENDPOINTS.EXTRACT_AUDIO,
-      extractFormData,
-      {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-        responseType: 'blob',
-        onUploadProgress: (progressEvent) => {
-          const percentCompleted = Math.round(
-            (progressEvent.loaded * 100) / (progressEvent.total || file.size)
-          );
-          setProgress(Math.min(50, percentCompleted)); // First 50% for upload
-        },
+    const fileBuffer = await file.arrayBuffer();
+    const extractResponse = await api.post(API_ENDPOINTS.EXTRACT_AUDIO, fileBuffer, {
+      headers: {
+        'Content-Type': 'application/octet-stream',
+        'X-File-Name': file.name
+      },
+      responseType: 'blob',
+      onUploadProgress: (progressEvent) => {
+        const percentCompleted = Math.round((progressEvent.loaded * 100) / (progressEvent.total || file.size));
+        setProgress(percentCompleted);
       }
-    );
+    });
 
-    if (!extractResponse.data) {
+    if (extractResponse.status !== 200) {
       throw new Error('Failed to extract audio');
     }
 
-    const audioBlob = new Blob([extractResponse.data], { type: 'audio/mpeg' });
-    const audioUrl = URL.createObjectURL(audioBlob);
-    setAudioUrl(audioUrl);
-    setProgress(75); // 75% after audio extraction
+    // Create URL for the extracted audio
+    const audioBlob = extractResponse.data;
+    setAudioUrl(URL.createObjectURL(audioBlob));
+    
+    const formData = new FormData();
+    formData.append("file", file);
 
-    // Create FormData for music recognition
-    const recognizeFormData = new FormData();
-    recognizeFormData.append('file', audioBlob, 'audio.mp3');
-
-    const recognizeResponse = await apiClient.post(
-      API_ENDPOINTS.RECOGNIZE_MUSIC,
-      recognizeFormData,
-      {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-        onUploadProgress: (progressEvent) => {
-          const percentCompleted = Math.round(
-            (progressEvent.loaded * 100) / (progressEvent.total || audioBlob.size)
-          );
-          // Last 25% for recognition
-          setProgress(75 + Math.min(25, Math.floor(percentCompleted / 4)));
-        },
+    const response = await api.post(API_ENDPOINTS.RECOGNIZE_MUSIC, formData, {
+      headers: {
+        "Content-Type": "multipart/form-data",
+      },
+      onUploadProgress: (progressEvent) => {
+        const percentCompleted = Math.round((progressEvent.loaded * 100) / (progressEvent.total || file.size));
+        setProgress(percentCompleted);
       }
-    );
+    });
 
     clearInterval(progressInterval);
     setProgress(100);
 
-    if (recognizeResponse.data) {
-      setMusicInfo(recognizeResponse.data);
+    if (response.data.error) {
+      throw new Error(response.data.error);
     }
+
+    setMusicInfo(response.data);
+    
   } catch (error) {
     clearInterval(progressInterval);
     handleError(error, setError);
@@ -114,7 +103,7 @@ export const processMediaUrl = async (
 
   try {
     // First get the audio URL for playback
-    const audioUrlResponse = await apiClient.get(API_ENDPOINTS.AUDIO_URL, {
+    const audioUrlResponse = await api.get(API_ENDPOINTS.AUDIO_URL, {
       params: {
         url: media.originalUrl.toString(),
         platform: media.platform,
@@ -129,7 +118,7 @@ export const processMediaUrl = async (
     setProgress(50);
 
     // Then recognize the music
-    const response = await apiClient.post(API_ENDPOINTS.RECOGNIZE_MUSIC, {
+    const response = await api.post(API_ENDPOINTS.RECOGNIZE_MUSIC, {
       url: media.originalUrl.toString(),
       platform: media.platform,
     });
@@ -165,7 +154,7 @@ export const handleDownloadAudio = async (
       URL.revokeObjectURL(url);
     } else {
       // For online media, use the download endpoint
-      const response = await apiClient.get(API_ENDPOINTS.DOWNLOAD_AUDIO, {
+      const response = await api.get(API_ENDPOINTS.DOWNLOAD_AUDIO, {
         params: {
           url: media.originalUrl.toString(),
           platform: media.platform,

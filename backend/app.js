@@ -34,41 +34,10 @@ const upload = multer({
   storage: multer.memoryStorage()
 });
 
-// CORS configuration
-const corsOptions = {
-  origin: [
-    'http://localhost:5173',
-    'https://vizmuze.vercel.app',
-    'https://vizmuze-kkqh0gpgl-daoudiredas-projects.vercel.app',
-    /\.vercel\.app$/  // Allow all vercel.app subdomains
-  ],
-  methods: ['GET', 'POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'X-File-Name'],
-  credentials: true,
-  maxAge: 86400 // 24 hours
-};
-
 // Enable CORS
-app.use(cors(corsOptions));
-
-// Configure body parsers with size limits
+app.use(cors());
 app.use(express.json({ limit: '100mb' }));
-app.use(express.raw({ 
-  type: 'application/octet-stream', 
-  limit: '100mb'
-}));
-
-// Add response headers for all routes
-app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', req.headers.origin);
-  res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, X-File-Name');
-  res.header('Access-Control-Allow-Credentials', 'true');
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
-  next();
-});
+app.use(express.raw({ type: 'application/octet-stream', limit: '100mb' }));
 
 // Serve static files in production
 if (process.env.NODE_ENV === "production") {
@@ -85,6 +54,16 @@ if (process.env.NODE_ENV === "production") {
     res.sendFile(path.join(__dirname, "../dist/index.html"));
   });
 }
+
+app.use((req, res, next) => {
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.header(
+    "Access-Control-Allow-Headers",
+    "Origin, X-Requested-With, Content-Type, Accept"
+  );
+  next();
+});
 
 app.get("/api/download-audio", async (req, res) => {
   try {
@@ -311,60 +290,84 @@ app.get("/api/audio-url", async (req, res) => {
  */
 const pipeline = promisify(stream.pipeline);
 
-app.post("/api/extract-audio", upload.single('file'), async (req, res) => {
-  let tempInputFile = null;
-  let tempOutputFile = null;
+app.post(
+  "/api/extract-audio",
+  express.raw({ type: "application/octet-stream", limit: "100mb" }),
+  async (req, res) => {
+    let tempInputFile = null;
+    let tempOutputFile = null;
 
-  try {
-    if (!req.file) {
-      throw new Error('No file uploaded');
-    }
+    try {
+      if (!req.body || req.body.length === 0) {
+        console.error("No file data received");
+        return res.status(400).json({ error: "No video file provided" });
+      }
 
-    // Create temp directory if it doesn't exist
-    const tempDir = path.join(os.tmpdir(), 'vizmuze');
-    if (!fs.existsSync(tempDir)) {
-      fs.mkdirSync(tempDir);
-    }
+      const fileName = req.headers["x-file-name"] || "unknown_file";
+      //console.log('File received:', fileName, 'Size:', req.body.length)
 
-    // Create temp files with unique names
-    const fileExt = path.extname(req.file.originalname);
-    tempInputFile = path.join(tempDir, `input-${Date.now()}${fileExt}`);
-    tempOutputFile = path.join(tempDir, `output-${Date.now()}.mp3`);
+      // Create temporary input file
+      tempInputFile = path.join(os.tmpdir(), `input_${Date.now()}_${fileName}`);
+      await fs.promises.writeFile(tempInputFile, req.body);
 
-    // Write uploaded file to temp location
-    fs.writeFileSync(tempInputFile, req.file.buffer);
+      // Create temporary output file
+      tempOutputFile = path.join(os.tmpdir(), `output_${Date.now()}.mp3`);
 
-    // Extract audio using FFmpeg
-    await new Promise((resolve, reject) => {
-      ffmpeg(tempInputFile)
-        .toFormat('mp3')
-        .on('error', (err) => reject(err))
-        .on('end', () => resolve())
-        .save(tempOutputFile);
-    });
+      //console.log('Temporary files created:', tempInputFile, tempOutputFile)
 
-    // Read the output file
-    const audioBuffer = fs.readFileSync(tempOutputFile);
+      // Set up FFmpeg command
+      await new Promise((resolve, reject) => {
+        ffmpeg(tempInputFile)
+          .noVideo()
+          .audioCodec("libmp3lame")
+          .audioChannels(2)
+          .audioFrequency(44100)
+          .format("mp3")
+          .on("start", (commandLine) => {
+            console.log("FFmpeg process started:", commandLine);
+          })
+          .on("error", (err) => {
+            console.error("FFmpeg error:", err.message);
+            reject(err);
+          })
+          .on("end", () => {
+            console.log("FFmpeg process completed");
+            resolve();
+          })
+          .save(tempOutputFile);
+      });
 
-    // Set response headers
-    res.setHeader('Content-Type', 'audio/mpeg');
-    res.setHeader('Content-Disposition', `attachment; filename="audio.mp3"`);
+      // Set response headers
+      res.setHeader("Content-Type", "audio/mpeg");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="${path.parse(fileName).name}.mp3"`
+      );
 
-    // Send the file
-    res.send(audioBuffer);
-  } catch (error) {
-    console.error('Error extracting audio:', error);
-    res.status(500).json({ error: error.message || 'Error processing audio' });
-  } finally {
-    // Clean up temp files
-    if (tempInputFile && fs.existsSync(tempInputFile)) {
-      fs.unlinkSync(tempInputFile);
-    }
-    if (tempOutputFile && fs.existsSync(tempOutputFile)) {
-      fs.unlinkSync(tempOutputFile);
+      // Send the file
+      await pipeline(fs.createReadStream(tempOutputFile), res);
+    } catch (error) {
+      console.error("Error extracting audio:", error);
+      res
+        .status(500)
+        .json({ error: "Failed to extract audio", details: error.message });
+    } finally {
+      // Clean up temporary files
+      if (tempInputFile) {
+        fs.unlink(tempInputFile, (err) => {
+          if (err) console.error("Error deleting input file:", err);
+          else console.log("Input file deleted successfully");
+        });
+      }
+      if (tempOutputFile) {
+        fs.unlink(tempOutputFile, (err) => {
+          if (err) console.error("Error deleting output file:", err);
+          else console.log("Output file deleted successfully");
+        });
+      }
     }
   }
-});
+);
 
 app.post(
   "/api/recognize-music",
