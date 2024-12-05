@@ -46,26 +46,26 @@ export const processLocalFile = async (
 
   try {
     const fileBuffer = await file.arrayBuffer();
-    const extractResponse = await api.post(API_ENDPOINTS.EXTRACT_AUDIO, fileBuffer, {
-      headers: {
-        'Content-Type': 'application/octet-stream',
-        'X-File-Name': file.name
-      },
-      responseType: 'blob',
-      onUploadProgress: (progressEvent) => {
-        const percentCompleted = Math.round((progressEvent.loaded * 100) / (progressEvent.total || file.size));
-        setProgress(percentCompleted);
+    const extractResponse = await api.post(
+      API_ENDPOINTS.EXTRACT_AUDIO,
+      fileBuffer,
+      {
+        headers: {
+          "Content-Type": "application/octet-stream",
+          "X-File-Name": file.name,
+        },
+        responseType: "blob",
       }
-    });
+    );
 
     if (extractResponse.status !== 200) {
-      throw new Error('Failed to extract audio');
+      throw new Error("Failed to extract audio");
     }
 
     // Create URL for the extracted audio
     const audioBlob = extractResponse.data;
     setAudioUrl(URL.createObjectURL(audioBlob));
-    
+
     const formData = new FormData();
     formData.append("file", file);
 
@@ -73,10 +73,6 @@ export const processLocalFile = async (
       headers: {
         "Content-Type": "multipart/form-data",
       },
-      onUploadProgress: (progressEvent) => {
-        const percentCompleted = Math.round((progressEvent.loaded * 100) / (progressEvent.total || file.size));
-        setProgress(percentCompleted);
-      }
     });
 
     clearInterval(progressInterval);
@@ -87,7 +83,6 @@ export const processLocalFile = async (
     }
 
     setMusicInfo(response.data);
-    
   } catch (error) {
     clearInterval(progressInterval);
     handleError(error, setError);
